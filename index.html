@@ -313,6 +313,7 @@ details[open]>summary .chev{transform:rotate(90deg)}
     <button class="tab" role="tab" data-t="dep">Départements &amp; équipes</button>
     <button class="tab" role="tab" data-t="cmp">Comparaison</button>
     <button class="tab" role="tab" data-t="saisie">Saisie &amp; détail</button>
+    <button class="tab" role="tab" data-t="prime">Primes</button>
     <button class="tab" role="tab" data-t="ctr">Contrats</button>
     <button class="tab" role="tab" data-t="param">Paramètres</button>
     <button class="tab" role="tab" data-t="imp">Importer les données</button>
@@ -333,7 +334,7 @@ details[open]>summary .chev{transform:rotate(90deg)}
 var KEY="rendements-nara-v1";
 var DEF={obj:{BUYO:125,SOUBRE:100,MEAGUI:250},objEq:{},seuil:100,
   weeks:[["14-au-18 setp","2026-09-14","2026-09-18"],["19-au-25 setp","2026-09-19","2026-09-25"],["26 sept-au-04 oct","2026-09-26","2026-10-04"],["2026-10-05_2026-10-11","2026-10-05","2026-10-11"],["2026-10-12_2026-10-18","2026-10-12","2026-10-18"]]};
-var state={rows:[],sample:true,cfg:JSON.parse(JSON.stringify(DEF)),week:null,from:"",to:"",q:"",tab:"synth",cmp:null,open:{},flash:null,ind:"haobj",hf:"all",stage:null,impDep:"",hs:"note",ctr:null,cw:"",cdep:"",cq:"",cedit:null,edit:null,tDep:"",tSup:"",tSupNew:"",tg:[{a:"",n:"",ha:"",p:"c",r:"c"}],eDate:todayISO(),eWeek:""};
+var state={rows:[],sample:true,cfg:JSON.parse(JSON.stringify(DEF)),week:null,from:"",to:"",q:"",tab:"synth",cmp:null,open:{},flash:null,ind:"haobj",hf:"all",stage:null,impDep:"",hs:"note",ctr:null,cw:"",cdep:"",cq:"",cedit:null,edit:null,tDep:"",tSup:"",tSupNew:"",tg:[{a:"",n:"",ha:"",p:"c",r:"c"}],eDate:todayISO(),eWeek:"",pdep:"",pst:""};
 var $=function(s){return document.querySelector(s)};
 var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
 var f1=function(x){return x.toLocaleString("fr-FR",{minimumFractionDigits:1,maximumFractionDigits:1})};
@@ -863,6 +864,47 @@ function barList(items){
   var mx=items.reduce(function(m,i){return Math.max(m,i.v)},0);
   return '<div class="bl">'+items.map(function(i){return '<div class="bli"><span class="bl-l">'+esc(i.l)+'</span><span class="bl-b"><i style="width:'+(mx?i.v/mx*100:0)+'%"></i></span><span class="bl-v">'+i.v+'</span></div>'}).join("")+'</div>';
 }
+/* ---------- primes : toutes les semaines ---------- */
+function tPrime(){
+  var sv=[state.from,state.to,state.q];state.from="";state.to="";state.q="";
+  var ws=weeksList().slice().reverse(),W=ws.map(function(k){var r=evaluer(k);return {k:k,r:r}}).filter(function(x){return x.r});
+  state.from=sv[0];state.to=sv[1];state.q=sv[2];
+  var dep=state.pdep,st=state.pst,all=[],cum={};
+  W.forEach(function(x){
+    x.r.agents.forEach(function(a){
+      var c=a.classe==="vert"?"prime":(a.attente?"fav":"");if(!c)return;
+      if(dep&&a.d!==dep)return;if(st&&st!==c)return;
+      var o={w:x.k,a:a,c:c};all.push(o);
+      var k=a.d+"|"+a.s+"|"+a.a,g=cum[k]||(cum[k]={d:a.d,s:a.s,a:a.a,p:0,f:0,ws:[]});
+      if(c==="prime")g.p++;else g.f++;g.ws.push(wlabel(x.k)+(c==="prime"?" ✔":" ⏳"));
+    });
+  });
+  var nP=all.filter(function(o){return o.c==="prime"}).length,nF=all.length-nP;
+  var sup=0;W.forEach(function(x){x.r.sups.forEach(function(q){if(q.classe==="vert"&&(!dep||q.d===dep))sup++})});
+  var h='<div class="cards kpis">'
+   +'<div class="card"><div class="v">'+nP+'</div><div class="s">Primes agents obtenues (vert)</div></div>'
+   +'<div class="card"><div class="v">'+nF+'</div><div class="s">Favorables : superficie atteinte, RDC/PVCL à solder</div></div>'
+   +'<div class="card"><div class="v">'+sup+'</div><div class="s">Primes superviseurs</div></div>'
+   +'<div class="card"><div class="v">'+Object.keys(cum).length+'</div><div class="s">Agents concernés</div></div></div>';
+  h+='<div class="panel"><div class="form4">'
+   +'<div class="f"><label for="pDep">Département</label><select id="pDep"><option value="">Tous</option>'+Object.keys(state.cfg.obj).map(function(d){return '<option value="'+d+'"'+(dep===d?" selected":"")+'>'+esc(dn(d))+'</option>'}).join("")+'</select></div>'
+   +'<div class="f"><label for="pSt">Statut</label><select id="pSt"><option value="">Prime + favorables</option><option value="prime"'+(st==="prime"?" selected":"")+'>Prime obtenue</option><option value="fav"'+(st==="fav"?" selected":"")+'>Favorables</option></select></div></div>'
+   +'<div class="sub">Prime = superficie atteinte + tous les PVCL et RDC terminés. Favorable = superficie atteinte, PVCL/RDC encore à solder dans le délai (S+1). Toutes les semaines, indépendamment des filtres de date.</div></div>';
+  if(!all.length)return h+'<div class="panel"><div class="empty">Aucun agent concerné pour ce filtre.</div></div>';
+  var pill=function(c){return c==="prime"?'<span class="pill p-vert">Prime</span>':'<span class="pill p-wait">Favorable</span>'};
+  W.forEach(function(x){
+    var L=all.filter(function(o){return o.w===x.k});if(!L.length)return;
+    var np=L.filter(function(o){return o.c==="prime"}).length;
+    h+='<div class="panel"><h2>Semaine '+esc(wlabel(x.k))+' <span class="sub">'+np+' prime(s) · '+(L.length-np)+' favorable(s) · délai PVCL/RDC : '+fdmy(x.r.fin)+'</span></h2><div class="scroll"><table><thead><tr><th>Agent</th><th>Département</th><th>Équipe</th><th class="num">Superficie (ha) / objectif</th><th class="num">Taux</th><th class="num">PVCL terminés</th><th class="num">RDC terminés</th><th>Statut</th></tr></thead><tbody>'
+     +L.sort(function(p,q){return (p.c===q.c?0:(p.c==="prime"?-1:1))||q.a.note-p.a.note}).map(function(o){var a=o.a;
+       return '<tr><td class="nm">'+esc(a.a)+'</td><td>'+esc(dn(a.d))+'</td><td>'+esc(a.s)+'</td><td class="num">'+f1(a.ha)+' / '+f0(a.obj)+'</td><td class="num"><b>'+Math.round(a.pct)+' %</b></td><td class="num">'+a.pt+'/'+a.n+'</td><td class="num">'+a.rt+'/'+a.n+'</td><td>'+pill(o.c)+'</td></tr>'}).join("")
+     +'</tbody></table></div></div>';
+  });
+  var C=Object.keys(cum).map(function(k){return cum[k]}).sort(function(a,b){return b.p-a.p||b.f-a.f||(a.a<b.a?-1:1)});
+  h+='<div class="panel"><h2>Cumul par agent <span class="sub">toutes semaines</span></h2><div class="scroll"><table><thead><tr><th>Agent</th><th>Département</th><th>Équipe</th><th class="num">Primes</th><th class="num">Favorables</th><th>Semaines</th></tr></thead><tbody>'
+   +C.map(function(g){return '<tr><td class="nm">'+esc(g.a)+'</td><td>'+esc(dn(g.d))+'</td><td>'+esc(g.s)+'</td><td class="num"><b>'+g.p+'</b></td><td class="num">'+g.f+'</td><td class="sub">'+esc(g.ws.join(" · "))+'</td></tr>'}).join("")+'</tbody></table></div></div>';
+  return h;
+}
 function tCtr(){
   var ws=ctrWeeks();
   if(!state.cw||(state.cw!=="*"&&ws.indexOf(state.cw)<0))state.cw=ws[ws.length-1]||"*";
@@ -1077,11 +1119,12 @@ function render(){
   renderMsg();
   document.querySelectorAll(".tab").forEach(function(b){b.setAttribute("aria-selected",b.dataset.t===state.tab)});
   var r=state.week?evaluer(state.week):null;
-  var hideC=state.tab==="ctr";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
+  var hideC=state.tab==="ctr"||state.tab==="prime";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
   $("#wkh").innerHTML=state.week?'<b>Semaine '+esc(wlabel(state.week))+'</b>'+(r?r.nd+' demandes · RDC et PVCL à solder avant le '+fdmy(r.fin):'aucune demande pour ce filtre')+([state.from,state.to,state.q.trim()].some(Boolean)?' · filtré':''):'';
   var v=$("#view"),t=state.tab;
   if(t==="cmp")v.innerHTML=tCmp();
   else if(t==="saisie")v.innerHTML=tSaisie();
+  else if(t==="prime")v.innerHTML=tPrime();
   else if(t==="ctr")v.innerHTML=tCtr();
   else if(t==="param")v.innerHTML=tParam();
   else if(t==="imp")v.innerHTML=tImport();
@@ -1091,7 +1134,7 @@ function render(){
 }
 
 /* ---------- navigation ---------- */
-var TABS=[["synth","synthese"],["hier","hierarchie"],["dep","equipes"],["cmp","comparaison"],["saisie","saisie"],["ctr","contrats"],["param","parametres"],["imp","importer"]];
+var TABS=[["synth","synthese"],["hier","hierarchie"],["dep","equipes"],["cmp","comparaison"],["saisie","saisie"],["prime","primes"],["ctr","contrats"],["param","parametres"],["imp","importer"]];
 var HASHTAB={},TABHASH={};TABS.forEach(function(x){TABHASH[x[0]]=x[1];HASHTAB[x[1]]=x[0]});
 function setTab(t,noHash){
   state.tab=t;if(!noHash){try{location.hash=TABHASH[t]}catch(e){}}
@@ -1207,6 +1250,8 @@ view.addEventListener("change",function(e){
   if(t.id==="impDep"){state.impDep=t.value;render();return}
   if(t.id==="hSort"){state.hs=t.value;render();return}
   if(t.id==="cSem"){state.cw=t.value;render();return}
+  if(t.id==="pDep"){state.pdep=t.value;render();return}
+  if(t.id==="pSt"){state.pst=t.value;render();return}
   if(t.id==="cDepF"){state.cdep=t.value;render();return}
   if(t.id==="tSupNew"){state.tSupNew=t.value;render();return}
   if(t.id==="tDep"){state.tDep=t.value;state.tSup="";state.tSupNew="";render();return}
