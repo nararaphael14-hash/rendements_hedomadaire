@@ -323,7 +323,7 @@ details[open]>summary .chev{transform:rotate(90deg)}
     <span class="lg l-orange">Superficie atteinte</span>
     <span class="lg l-jaune">RDC + PVCL terminés</span>
     <span class="lg l-vert">Superficie + RDC + PVCL → PRIME</span>
-    <span class="lg l-wait">En attente (délai S+1)</span>
+    <span class="lg l-jaune" style="background:var(--jaune-bg);color:var(--jaune)">Prime en cours (superficie + PVCL/RDC engagés)</span>
   </div>
   <div class="wkh" id="wkh"></div>
   <div id="view"></div>
@@ -569,13 +569,15 @@ function tSynth(r){
   var A=r.agents,nA=A.length;
   var tot=A.reduce(function(t,a){return t+a.ha},0),pt=A.reduce(function(t,a){return t+a.pt},0),nd=A.reduce(function(t,a){return t+a.n},0);
   var supN=A.filter(function(a){return a.sup_ok}).length,rdcN=A.filter(function(a){return a.rdc_ok}).length;
-  var pa=A.filter(function(a){return a.classe==="vert"}),ps=r.sups.filter(function(a){return a.classe==="vert"}),att=A.filter(function(a){return a.attente});
+  var pa=A.filter(function(a){return a.classe==="vert"}),ps=r.sups.filter(function(a){return a.classe==="vert"}),att=A.filter(function(a){return a.classe!=="vert"&&a.sup_ok&&a.pc===0&&a.rc===0});
+  var seu=state.cfg.seuil,psj=r.sups.filter(function(q){if(q.classe==="vert")return false;var L=A.filter(function(a){return a.d===q.d&&a.s===q.s});if(!L.length)return false;return L.filter(function(a){return a.sup_ok}).length/L.length*100>=seu&&L.filter(function(a){return a.pc===0&&a.rc===0}).length/L.length*100>=seu});
   var h='<div class="cards kpis">'
    +'<div class="card"><div class="v">'+f1(tot)+' ha</div><div class="s">Superficie totale</div></div>'
    +'<div class="card"><div class="v">'+supN+' / '+nA+'</div><div class="s">Agents ayant atteint la superficie</div></div>'
    +'<div class="card"><div class="v">'+rdcN+' / '+nA+'</div><div class="s">Agents RDC soldés</div></div>'
    +'<div class="card"><div class="v">'+pt+' / '+nd+'</div><div class="s">PVCL terminés</div></div>'
-   +'<div class="card"><div class="v">'+pa.length+' + '+ps.length+'</div><div class="s">Agents + superviseurs en PRIME (vert)</div></div></div>';
+   +'<div class="card"><div class="v">'+pa.length+' + '+ps.length+'</div><div class="s">Agents + superviseurs · prime atteinte (vert)</div></div>'
+   +'<div class="card" style="border-left-color:var(--jaune)"><div class="v">'+att.length+' + '+psj.length+'</div><div class="s">Agents + superviseurs · prime en cours (jaune)</div></div></div>';
   var badge=function(prov,what){return prov?'<span class="pill p-none">Provisoire : les 3 objectifs ne sont pas tous atteints</span>':'<span class="pill p-vert">Prime</span>'};
   h+='<div class="two">'
    +'<div class="card hero"><div class="k">MEILLEUR AGENT DE LA SEMAINE</div><div class="v">'+(r.provA?'⏳ ':'')+esc(r.bestA.a)+'</div><div class="s">'+esc(dn(r.bestA.d))+' · '+esc(r.bestA.s)+'</div><div>'+bestLine(r.bestA)+'</div><div>'+badge(r.provA)+'</div></div>';
@@ -586,12 +588,15 @@ function tSynth(r){
   h+='<div class="sub">Le meilleur agent et le meilleur superviseur sont désignés sur toute la région (chaque superviseur est évalué selon l’objectif de son département) ; le meilleur département est celui dont la moyenne des ratios superficie, PVCL terminés et RDC terminés est la plus haute. Le meilleur agent/superviseur est celui qui atteint les trois objectifs (superficie, PVCL, RDC) avec la meilleure note = moyenne des taux superficie, PVCL terminés et RDC terminés. Tant que personne ne les atteint, le meilleur provisoire est affiché sans prime.</div>';
   var lst=function(L,f){return L.length?'<div class="chips">'+L.map(f).join("")+'</div>':'<div class="empty">Aucun pour le moment</div>'};
   var byDep=function(L,f){var any=false,o=r.deps.map(function(D){var X=L.filter(function(x){return x.d===D.d});if(X.length)any=true;return '<div class="dgrp"><div class="dgh"><b>'+esc(dn(D.d))+'</b> <span class="sub">'+X.length+'</span></div>'+(X.length?'<div class="chips">'+X.map(f).join("")+'</div>':'<div class="sub">—</div>')+'</div>'}).join("");return any?'<div class="dcols" style="--n:'+r.deps.length+'">'+o+'</div>':'<div class="empty">Aucun pour le moment</div>'};
-  h+='<div class="two"><div class="panel"><h2>PRIME — Agents</h2>'+byDep(pa,function(a){return '<span class="chip">'+esc(a.a)+' · '+f1(a.note)+'</span>'})+'</div>'
-   +'<div class="panel"><h2>PRIME — Superviseurs</h2>'+byDep(ps,function(x){return '<span class="chip">'+esc(x.s)+' · '+f1(x.note)+'</span>'})+'</div></div>';
-  h+='<div class="panel"><h2>Prime en attente de solde ('+att.length+')</h2><div class="sub">Superficie atteinte, RDC et PVCL à solder avant le '+fdmy(r.fin)+'.</div>';
-  if(!att.length)h+='<div class="empty">Aucun agent en attente.</div>';
+  var chipJ=function(t){return '<span class="chip" style="background:var(--jaune-bg);color:var(--jaune)">'+t+'</span>'};
+  h+='<div class="two"><div class="panel"><h2><span class="pill p-vert">Prime atteinte</span> Agents</h2>'+byDep(pa,function(a){return '<span class="chip">'+esc(a.a)+' · '+f1(a.note)+'</span>'})+'</div>'
+   +'<div class="panel"><h2><span class="pill p-vert">Prime atteinte</span> Superviseurs</h2>'+byDep(ps,function(x){return '<span class="chip">'+esc(x.s)+' · '+f1(x.note)+'</span>'})+'</div></div>';
+  h+='<div class="two"><div class="panel"><h2><span class="pill p-jaune">Prime en cours</span> Agents</h2>'+byDep(att,function(a){return chipJ(esc(a.a)+' · '+f1(a.note))})+'</div>'
+   +'<div class="panel"><h2><span class="pill p-jaune">Prime en cours</span> Superviseurs</h2>'+byDep(psj,function(x){return chipJ(esc(x.s)+' · '+f1(x.note))})+'</div></div>';
+  h+='<div class="panel"><h2><span class="pill p-jaune">Prime en cours</span> Agents ('+att.length+')</h2><div class="sub">Superficie atteinte, PVCL et RDC engagés (terminés ou en cours) mais pas tous terminés. À solder avant le '+fdmy(r.fin)+'.</div>';
+  if(!att.length)h+='<div class="empty">Aucun agent en cours.</div>';
   else{h+='<div class="scroll"><table><thead><tr><th>Agent</th><th>Équipe</th><th>Dép.</th><th class="num">Superficie (ha)</th><th class="num">PVCL</th><th class="num">RDC</th><th class="num">Note</th></tr></thead><tbody>';
-    att.forEach(function(a){h+='<tr class="wait"><td class="nm">'+esc(a.a)+'</td><td>'+esc(a.s)+'</td><td>'+esc(dn(a.d))+'</td><td class="num">'+f1(a.ha)+' / '+f0(a.obj)+'</td><td class="num">'+a.pt+'/'+a.n+et(a.pvcl_etat)+'</td><td class="num">'+a.rt+'/'+a.n+et(a.rdc_etat)+'</td><td class="num">'+f1(a.note)+'</td></tr>'});
+    att.forEach(function(a){h+='<tr style="background:var(--jaune-bg)"><td class="nm">'+esc(a.a)+'</td><td>'+esc(a.s)+'</td><td>'+esc(dn(a.d))+'</td><td class="num">'+f1(a.ha)+' / '+f0(a.obj)+'</td><td class="num">'+a.pt+'/'+a.n+et(a.pvcl_etat)+'</td><td class="num">'+a.rt+'/'+a.n+et(a.rdc_etat)+'</td><td class="num">'+f1(a.note)+'</td></tr>'});
     h+='</tbody></table></div>'}
   return h+'</div>';
 }
