@@ -872,36 +872,36 @@ function tPrime(){
   var dep=state.pdep,st=state.pst,all=[],cum={};
   W.forEach(function(x){
     x.r.agents.forEach(function(a){
-      var c=a.classe==="vert"?"prime":(a.attente?"fav":"");if(!c)return;
+      var c=a.classe==="vert"?"prime":((a.sup_ok&&a.pc===0&&a.rc===0)?"cours":"");if(!c)return;
       if(dep&&a.d!==dep)return;if(st&&st!==c)return;
       var o={w:x.k,a:a,c:c};all.push(o);
       var k=a.d+"|"+a.s+"|"+a.a,g=cum[k]||(cum[k]={d:a.d,s:a.s,a:a.a,p:0,f:0,ws:[]});
-      if(c==="prime")g.p++;else g.f++;g.ws.push(wlabel(x.k)+(c==="prime"?" ✔":" ⏳"));
+      if(c==="prime")g.p++;else g.f++;g.ws.push(wlabel(x.k)+(c==="prime"?" ✔":" …"));
     });
   });
   var nP=all.filter(function(o){return o.c==="prime"}).length,nF=all.length-nP;
   var sup=0;W.forEach(function(x){x.r.sups.forEach(function(q){if(q.classe==="vert"&&(!dep||q.d===dep))sup++})});
   var h='<div class="cards kpis">'
-   +'<div class="card"><div class="v">'+nP+'</div><div class="s">Primes agents obtenues (vert)</div></div>'
-   +'<div class="card"><div class="v">'+nF+'</div><div class="s">Favorables : superficie atteinte, RDC/PVCL à solder</div></div>'
+   +'<div class="card"><div class="v">'+nP+'</div><div class="s">Prime atteinte (vert)</div></div>'
+   +'<div class="card"><div class="v">'+nF+'</div><div class="s">Prime en cours (jaune)</div></div>'
    +'<div class="card"><div class="v">'+sup+'</div><div class="s">Primes superviseurs</div></div>'
    +'<div class="card"><div class="v">'+Object.keys(cum).length+'</div><div class="s">Agents concernés</div></div></div>';
   h+='<div class="panel"><div class="form4">'
    +'<div class="f"><label for="pDep">Département</label><select id="pDep"><option value="">Tous</option>'+Object.keys(state.cfg.obj).map(function(d){return '<option value="'+d+'"'+(dep===d?" selected":"")+'>'+esc(dn(d))+'</option>'}).join("")+'</select></div>'
-   +'<div class="f"><label for="pSt">Statut</label><select id="pSt"><option value="">Prime + favorables</option><option value="prime"'+(st==="prime"?" selected":"")+'>Prime obtenue</option><option value="fav"'+(st==="fav"?" selected":"")+'>Favorables</option></select></div></div>'
-   +'<div class="sub">Prime = superficie atteinte + tous les PVCL et RDC terminés. Favorable = superficie atteinte, PVCL/RDC encore à solder dans le délai (S+1). Toutes les semaines, indépendamment des filtres de date.</div></div>';
+   +'<div class="f"><label for="pSt">Statut</label><select id="pSt"><option value="">Atteinte + en cours</option><option value="prime"'+(st==="prime"?" selected":"")+'>Prime atteinte</option><option value="cours"'+(st==="cours"?" selected":"")+'>Prime en cours</option></select></div></div>'
+   +'<div class="sub"><b style="color:var(--vert)">Prime atteinte</b> (vert) : superficie atteinte + tous les PVCL et RDC terminés. <b style="color:var(--jaune)">Prime en cours</b> (jaune) : superficie atteinte + PVCL et RDC engagés (terminés ou en cours, aucun « à créer ») mais pas tous terminés. Toutes les semaines, indépendamment des filtres de date.</div></div>';
   if(!all.length)return h+'<div class="panel"><div class="empty">Aucun agent concerné pour ce filtre.</div></div>';
-  var pill=function(c){return c==="prime"?'<span class="pill p-vert">Prime</span>':'<span class="pill p-wait">Favorable</span>'};
+  var pill=function(c){return c==="prime"?'<span class="pill p-vert">Prime atteinte</span>':'<span class="pill p-jaune">Prime en cours</span>'};
   W.forEach(function(x){
     var L=all.filter(function(o){return o.w===x.k});if(!L.length)return;
     var np=L.filter(function(o){return o.c==="prime"}).length;
-    h+='<div class="panel"><h2>Semaine '+esc(wlabel(x.k))+' <span class="sub">'+np+' prime(s) · '+(L.length-np)+' favorable(s) · délai PVCL/RDC : '+fdmy(x.r.fin)+'</span></h2><div class="scroll"><table><thead><tr><th>Agent</th><th>Département</th><th>Équipe</th><th class="num">Superficie (ha) / objectif</th><th class="num">Taux</th><th class="num">PVCL terminés</th><th class="num">RDC terminés</th><th>Statut</th></tr></thead><tbody>'
+    h+='<div class="panel"><h2>Semaine '+esc(wlabel(x.k))+' <span class="sub">'+np+' atteinte(s) · '+(L.length-np)+' en cours'+'</span></h2><div class="scroll"><table><thead><tr><th>Agent</th><th>Département</th><th>Équipe</th><th class="num">Superficie (ha) / objectif</th><th class="num">Taux</th><th class="num">PVCL terminés</th><th class="num">RDC terminés</th><th>Statut</th></tr></thead><tbody>'
      +L.sort(function(p,q){return (p.c===q.c?0:(p.c==="prime"?-1:1))||q.a.note-p.a.note}).map(function(o){var a=o.a;
-       return '<tr><td class="nm">'+esc(a.a)+'</td><td>'+esc(dn(a.d))+'</td><td>'+esc(a.s)+'</td><td class="num">'+f1(a.ha)+' / '+f0(a.obj)+'</td><td class="num"><b>'+Math.round(a.pct)+' %</b></td><td class="num">'+a.pt+'/'+a.n+'</td><td class="num">'+a.rt+'/'+a.n+'</td><td>'+pill(o.c)+'</td></tr>'}).join("")
+       return '<tr style="background:'+(o.c==="prime"?"var(--vert-bg)":"var(--jaune-bg)")+'"><td class="nm">'+esc(a.a)+'</td><td>'+esc(dn(a.d))+'</td><td>'+esc(a.s)+'</td><td class="num">'+f1(a.ha)+' / '+f0(a.obj)+'</td><td class="num"><b>'+Math.round(a.pct)+' %</b></td><td class="num">'+a.pt+'/'+a.n+'</td><td class="num">'+a.rt+'/'+a.n+'</td><td>'+pill(o.c)+'</td></tr>'}).join("")
      +'</tbody></table></div></div>';
   });
   var C=Object.keys(cum).map(function(k){return cum[k]}).sort(function(a,b){return b.p-a.p||b.f-a.f||(a.a<b.a?-1:1)});
-  h+='<div class="panel"><h2>Cumul par agent <span class="sub">toutes semaines</span></h2><div class="scroll"><table><thead><tr><th>Agent</th><th>Département</th><th>Équipe</th><th class="num">Primes</th><th class="num">Favorables</th><th>Semaines</th></tr></thead><tbody>'
+  h+='<div class="panel"><h2>Cumul par agent <span class="sub">toutes semaines</span></h2><div class="scroll"><table><thead><tr><th>Agent</th><th>Département</th><th>Équipe</th><th class="num">Primes atteintes</th><th class="num">Primes en cours</th><th>Semaines</th></tr></thead><tbody>'
    +C.map(function(g){return '<tr><td class="nm">'+esc(g.a)+'</td><td>'+esc(dn(g.d))+'</td><td>'+esc(g.s)+'</td><td class="num"><b>'+g.p+'</b></td><td class="num">'+g.f+'</td><td class="sub">'+esc(g.ws.join(" · "))+'</td></tr>'}).join("")+'</tbody></table></div></div>';
   return h;
 }
