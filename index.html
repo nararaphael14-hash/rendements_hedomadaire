@@ -272,15 +272,55 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .chk{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .chk label{display:flex;gap:5px;align-items:center;font-size:13px}
 .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+/* ---------- mise en page : barre latérale ---------- */
+.app{max-width:min(1840px,100%);margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.app>.wrap{min-width:0;max-width:none;margin:0}
+.side{display:contents}
+.tgrp{display:none}
+.who{display:none}
+@media (min-width:900px){
+  .app{display:grid;grid-template-columns:248px minmax(0,1fr);gap:28px;align-items:start}
+  .side{display:flex;flex-direction:column;gap:18px;position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto;scrollbar-width:thin;padding-right:2px}
+  .side h1{font-size:23px}
+  .side .lead{font-size:12.5px}
+  .navbar{position:static;background:none}
+  .tabs{flex-direction:column;gap:2px;overflow:visible;padding:8px}
+  .tgrp{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:12px 12px 4px}
+  .tgrp:first-child{padding-top:4px}
+  .tab{width:100%;text-align:left;white-space:normal;padding:10px 12px;border-radius:10px;border-left:3px solid transparent}
+  .tab[aria-selected=true]{box-shadow:none}
+  .who{display:block;font-size:12.5px;color:var(--muted);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+  .who b{display:block;color:var(--ink);font-size:13.5px}
+  .tools{position:sticky;top:0;z-index:8;background:var(--bg);padding:6px 0 10px;margin-top:-6px}
+}
 body.ro [data-go="imp"],body.ro #btnExp,body.ro #expBox,body.ro .subbtns{display:none!important}
 .tab[hidden]{display:none!important}
 </style>
 
-<div class="wrap">
-  <div>
+<div class="app">
+<aside class="side">
+  <div class="brand">
     <h1>Rendements des agents</h1>
     <p class="lead">Département › Superviseur › Agent — objectifs hebdomadaires, RDC et primes</p>
   </div>
+  <div class="navbar"><div class="tabs" role="tablist" id="tabs">
+    <div class="tgrp">Analyse</div>
+    <button class="tab" role="tab" data-t="synth">Synthèse &amp; primes</button>
+    <button class="tab" role="tab" data-t="hier">Hiérarchie</button>
+    <button class="tab" role="tab" data-t="dep">Départements &amp; équipes</button>
+    <button class="tab" role="tab" data-t="cmp">Comparaison</button>
+    <button class="tab" role="tab" data-t="prime">Primes</button>
+    <div class="tgrp">Données</div>
+    <button class="tab" role="tab" data-t="saisie">Saisie &amp; détail</button>
+    <button class="tab" role="tab" data-t="ctr">Contrats</button>
+    <button class="tab" role="tab" data-t="imp">Importer les données</button>
+    <div class="tgrp">Administration</div>
+    <button class="tab" role="tab" data-t="partage">Partage</button>
+    <button class="tab" role="tab" data-t="param">Paramètres</button>
+  </div></div>
+  <div class="who" id="whoChip"></div>
+</aside>
+<div class="wrap">
 
   <div id="msg" aria-live="polite"></div>
   <input type="file" id="file" accept=".xlsx,.xlsm,.xls,.csv" hidden>
@@ -309,19 +349,6 @@ body.ro [data-go="imp"],body.ro #btnExp,body.ro #expBox,body.ro .subbtns{display
     <textarea id="expTxt" rows="6" hidden aria-label="Résumé à copier"></textarea>
   </div>
 
-  <div class="navbar"><div class="tabs" role="tablist" id="tabs">
-    <button class="tab" role="tab" data-t="synth">Synthèse &amp; primes</button>
-    <button class="tab" role="tab" data-t="hier">Hiérarchie</button>
-    <button class="tab" role="tab" data-t="dep">Départements &amp; équipes</button>
-    <button class="tab" role="tab" data-t="cmp">Comparaison</button>
-    <button class="tab" role="tab" data-t="saisie">Saisie &amp; détail</button>
-    <button class="tab" role="tab" data-t="prime">Primes</button>
-    <button class="tab" role="tab" data-t="partage">Partage</button>
-    <button class="tab" role="tab" data-t="ctr">Contrats</button>
-    <button class="tab" role="tab" data-t="param">Paramètres</button>
-    <button class="tab" role="tab" data-t="imp">Importer les données</button>
-  </div></div>
-
   <div class="legend" id="legend">
     <span class="lg l-orange">Superficie atteinte</span>
     <span class="lg l-jaune">RDC + PVCL terminés</span>
@@ -330,6 +357,7 @@ body.ro [data-go="imp"],body.ro #btnExp,body.ro #expBox,body.ro .subbtns{display
   </div>
   <div class="wkh" id="wkh"></div>
   <div id="view"></div>
+</div>
 </div>
 
 <script>
@@ -1162,6 +1190,7 @@ function render(){
   renderMsg();
   document.querySelectorAll(".tab").forEach(function(b){b.setAttribute("aria-selected",b.dataset.t===state.tab);b.hidden=isRO()&&!!ROTABS[b.dataset.t]});
   var ro0=isRO();document.body.classList.toggle("ro",ro0);
+  (function(){var c=$("#whoChip"),w=sb.who;if(c)c.innerHTML=w?"<b>"+esc(w.nom)+"</b>"+esc(w.role)+(w.dep?" · "+esc(dn(w.dep)):""):"<b>"+(sb.code?"Code enregistré":"Lecteur (lien)")+"</b>consultation"})();
   if(ro0&&ROTABS[state.tab]){state.tab="synth";try{location.hash="synthese"}catch(e){}}
   var r=state.week?evaluer(state.week):null;
   var hideC=state.tab==="ctr"||state.tab==="prime"||state.tab==="partage";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
