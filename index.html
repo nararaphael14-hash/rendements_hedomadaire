@@ -272,6 +272,8 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .chk{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .chk label{display:flex;gap:5px;align-items:center;font-size:13px}
 .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+body.ro [data-go="imp"],body.ro #btnExp,body.ro #expBox,body.ro .subbtns{display:none!important}
+.tab[hidden]{display:none!important}
 </style>
 
 <div class="wrap">
@@ -1158,7 +1160,9 @@ function render(){
   $("#dFrom").value=state.from;$("#dTo").value=state.to;$("#q").value=state.q;
   $("#wkPrev").disabled=ws.indexOf(state.week)<=0;$("#wkNext").disabled=ws.indexOf(state.week)>=ws.length-1;
   renderMsg();
-  document.querySelectorAll(".tab").forEach(function(b){b.setAttribute("aria-selected",b.dataset.t===state.tab)});
+  document.querySelectorAll(".tab").forEach(function(b){b.setAttribute("aria-selected",b.dataset.t===state.tab);b.hidden=isRO()&&!!ROTABS[b.dataset.t]});
+  var ro0=isRO();document.body.classList.toggle("ro",ro0);
+  if(ro0&&ROTABS[state.tab]){state.tab="synth";try{location.hash="synthese"}catch(e){}}
   var r=state.week?evaluer(state.week):null;
   var hideC=state.tab==="ctr"||state.tab==="prime"||state.tab==="partage";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
   $("#wkh").innerHTML=state.week?'<b>Semaine '+esc(wlabel(state.week))+'</b>'+(r?r.nd+' demandes · RDC et PVCL à solder avant le '+fdmy(r.fin):'aucune demande pour ce filtre')+([state.from,state.to,state.q.trim()].some(Boolean)?' · filtré':''):'';
@@ -1184,6 +1188,8 @@ function sbSaveCfg(){try{localStorage.setItem(SBK,JSON.stringify({code:sb.code,a
 function sigOf(r){return [r.w,r.d,r.s,r.a,r.dt,r.ha,r.p,r.r].join("|")}
 function sbSigs(){try{return JSON.parse(localStorage.getItem(SBS)||"{}")}catch(e){return {}}}
 function sbOk(){return true}
+function isRO(){return !sb.code||!!(sb.who&&sb.who.role==="lecteur")}
+var ROTABS={saisie:1,ctr:1,param:1,imp:1};
 function sbDirty(){var sg=sbSigs();return state.rows.filter(function(r){return sg[r.n]!==sigOf(r)})}
 function sbProg(p,t){sb.p=p;var b=document.getElementById("sbBar"),pc=document.getElementById("sbPct"),m=document.getElementById("sbTxt");if(b)b.style.width=p+"%";if(pc)pc.textContent=Math.round(p)+" %";if(m&&t)m.textContent=t}
 function sbMsg(m){
