@@ -1189,7 +1189,7 @@ function sigOf(r){return [r.w,r.d,r.s,r.a,r.dt,r.ha,r.p,r.r].join("|")}
 function sbSigs(){try{return JSON.parse(localStorage.getItem(SBS)||"{}")}catch(e){return {}}}
 function sbOk(){return true}
 function isRO(){return !sb.code||!!(sb.who&&sb.who.role==="lecteur")}
-var ROTABS={saisie:1,ctr:1,param:1,imp:1};
+var ROTABS={saisie:1,param:1,imp:1};
 function sbDirty(){var sg=sbSigs();return state.rows.filter(function(r){return sg[r.n]!==sigOf(r)})}
 function sbProg(p,t){sb.p=p;var b=document.getElementById("sbBar"),pc=document.getElementById("sbPct"),m=document.getElementById("sbTxt");if(b)b.style.width=p+"%";if(pc)pc.textContent=Math.round(p)+" %";if(m&&t)m.textContent=t}
 function sbMsg(m){
