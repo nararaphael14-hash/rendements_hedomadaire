@@ -20,8 +20,8 @@ drop policy if exists rend_update on public.rendements_demandes;
 create table if not exists public.rendements_acces (
   id uuid primary key default gen_random_uuid(),
   nom text not null,
-  role text not null check (role in ('admin','agent','lecture')),
-  dep text,                       -- agent : limité à ce département (BUYO, SOUBRE, MEAGUI) ; vide = tous
+  role text not null check (role in ('admin','lecteur')),
+  dep text,                       -- lecteur : limité à ce département (BUYO, SOUBRE, MEAGUI) ; vide = tous
   code_hash text not null unique, -- sha256 du code : le code lui-même n'est jamais stocké
   actif boolean not null default true,
   cree_le timestamptz not null default now(),
@@ -59,7 +59,6 @@ create or replace function public.rend_push(p_code text, p_rows jsonb) returns i
 language plpgsql security definer set search_path = public as $$
 declare u public.rendements_acces; k int;
 begin u := public.rend_auth(p_code);
-  if u.role = 'lecture' then raise exception 'LECTURE_SEULE'; end if;
   insert into public.rendements_demandes(n,d,s,a,w,dt,ha,p,r)
   select x.n,x.d,x.s,x.a,x.w,x.dt,coalesce(x.ha,0),coalesce(x.p,'c'),coalesce(x.r,'c')
     from jsonb_to_recordset(p_rows) as x(n text,d text,s text,a text,w text,dt date,ha numeric,p text,r text)
@@ -79,7 +78,7 @@ language plpgsql security definer set search_path = public as $$
 declare u public.rendements_acces; c text; i uuid;
 begin u := public.rend_auth(p_code);
   if u.role <> 'admin' then raise exception 'ADMIN_REQUIS'; end if;
-  if p_role not in ('admin','agent','lecture') or coalesce(trim(p_nom),'') = '' then raise exception 'PARAMETRES_INVALIDES'; end if;
+  if p_role not in ('admin','lecteur') or coalesce(trim(p_nom),'') = '' then raise exception 'PARAMETRES_INVALIDES'; end if;
   c := 'RDT-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)) || '-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,6));
   insert into public.rendements_acces(nom,role,dep,code_hash)
   values (trim(p_nom),p_role,nullif(upper(trim(coalesce(p_dep,''))),''),encode(sha256(convert_to(c,'utf8')),'hex')) returning id into i;
