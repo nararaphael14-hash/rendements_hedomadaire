@@ -110,3 +110,10 @@ grant execute on function public.rend_whoami(text), public.rend_pull(text,int,in
 
 -- Premier administrateur (à exécuter une fois, en remplaçant VOTRE-CODE) :
 -- insert into public.rendements_acces(nom,role,code_hash) values ('Administrateur','admin', encode(sha256(convert_to(upper('VOTRE-CODE'),'utf8')),'hex'));
+
+-- lecture publique : toute personne ayant le lien visualise les données (sans code, sans envoi)
+create or replace function public.rend_pull_public(p_offset int default 0, p_limit int default 1000) returns jsonb
+language sql security definer set search_path = public as $$
+  select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb) from (
+    select n,d,s,a,w,dt,ha,p,r from public.rendements_demandes order by n offset greatest(p_offset,0) limit least(greatest(p_limit,1),2000)) t $$;
+grant execute on function public.rend_pull_public(int,int) to anon;
