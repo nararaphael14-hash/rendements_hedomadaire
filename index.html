@@ -46,7 +46,7 @@ h2{font-family:var(--f-display);font-size:17px;margin:0;text-wrap:balance}
 .tools{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
 .f{display:flex;flex-direction:column;gap:3px;min-width:0}
 .f label{font-size:12px;color:var(--muted)}
-select,input[type=date],input[type=text],input[type=number],input[type=search]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+select,input[type=date],input[type=text],input[type=password],input[type=number],input[type=search]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
 select:focus-visible,input:focus-visible,button:focus-visible,summary:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .btn{font:inherit;font-weight:600;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:8px 14px;cursor:pointer;display:inline-block}
 .btn.ghost{background:var(--surface);color:var(--ink);border-color:var(--line)}
@@ -227,7 +227,7 @@ details[open]>summary .chev{transform:rotate(90deg)}
 @media (min-width:1700px){body{font-size:15px}.card .v{font-size:27px}}
 @media (max-width:720px){
   body{font-size:15px}
-  select,input[type=date],input[type=text],input[type=number],input[type=search],textarea{font-size:16px}
+  select,input[type=date],input[type=text],input[type=password],input[type=number],input[type=search],textarea{font-size:16px}
   .btn{min-height:42px}
   .btn.sm{min-height:36px}
   .tabs::-webkit-scrollbar{display:none}
@@ -314,6 +314,7 @@ details[open]>summary .chev{transform:rotate(90deg)}
     <button class="tab" role="tab" data-t="cmp">Comparaison</button>
     <button class="tab" role="tab" data-t="saisie">Saisie &amp; détail</button>
     <button class="tab" role="tab" data-t="prime">Primes</button>
+    <button class="tab" role="tab" data-t="partage">Partage</button>
     <button class="tab" role="tab" data-t="ctr">Contrats</button>
     <button class="tab" role="tab" data-t="param">Paramètres</button>
     <button class="tab" role="tab" data-t="imp">Importer les données</button>
@@ -348,7 +349,7 @@ function fdmy(iso){return iso.split("-").reverse().join("/")}
 function wlabel(k){var w=state.cfg.weeks.filter(function(x){return x[0]===k})[0];if(w)return fdm(w[1])+" → "+fdm(w[2]);var m=String(k).match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);return m?fdm(m[1])+" → "+fdm(m[2]):k}
 
 /* ---------- persistance ---------- */
-function save(){try{localStorage.setItem(KEY,JSON.stringify({rows:state.rows,sample:state.sample,cfg:state.cfg,ctr:state.ctr,ui:{week:state.week}}))}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({rows:state.rows,sample:state.sample,cfg:state.cfg,ctr:state.ctr,ui:{week:state.week}}))}catch(e){}try{sbKick()}catch(e){}}
 function load(){try{var s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&s.rows&&s.cfg){state.rows=s.rows;state.sample=!!s.sample;state.cfg=s.cfg;if(Array.isArray(s.ctr))state.ctr=s.ctr;if(s.ui&&s.ui.week)state.week=s.ui.week;return true}}catch(e){}return false}
 
 /* ---------- base d'origine : [N°, dép., superviseur, agent, semaine, date, ha, PVCL, RDC] ---------- */
@@ -1159,12 +1160,13 @@ function render(){
   renderMsg();
   document.querySelectorAll(".tab").forEach(function(b){b.setAttribute("aria-selected",b.dataset.t===state.tab)});
   var r=state.week?evaluer(state.week):null;
-  var hideC=state.tab==="ctr"||state.tab==="prime";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
+  var hideC=state.tab==="ctr"||state.tab==="prime"||state.tab==="partage";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
   $("#wkh").innerHTML=state.week?'<b>Semaine '+esc(wlabel(state.week))+'</b>'+(r?r.nd+' demandes · RDC et PVCL à solder avant le '+fdmy(r.fin):'aucune demande pour ce filtre')+([state.from,state.to,state.q.trim()].some(Boolean)?' · filtré':''):'';
   var v=$("#view"),t=state.tab;
   if(t==="cmp")v.innerHTML=tCmp();
   else if(t==="saisie")v.innerHTML=tSaisie();
   else if(t==="prime")v.innerHTML=tPrime();
+  else if(t==="partage")v.innerHTML=tPartage();
   else if(t==="ctr")v.innerHTML=tCtr();
   else if(t==="param")v.innerHTML=tParam();
   else if(t==="imp")v.innerHTML=tImport();
@@ -1173,8 +1175,88 @@ function render(){
   mobileTables(v);filtUI();
 }
 
+/* ---------- base partagée (Supabase) ---------- */
+var SBK="rendements-sb-v1",SBS="rendements-sb-sig",SQL_SETUP="-- Rendements des agents : tables partagées (à exécuter une fois dans Supabase > SQL Editor)\ncreate table if not exists public.rendements_demandes (\n  n text primary key,\n  d text not null,\n  s text,\n  a text,\n  w text,\n  dt date,\n  ha numeric not null default 0,\n  p text not null default 'c' check (p in ('t','e','c')),\n  r text not null default 'c' check (r in ('t','e','c')),\n  updated_at timestamptz not null default now()\n);\ncreate index if not exists rendements_demandes_w_idx on public.rendements_demandes (w);\n\ncreate or replace function public.rendements_touch() returns trigger\nlanguage plpgsql set search_path = public as $$\nbegin new.updated_at := now(); return new; end $$;\ndrop trigger if exists rendements_touch on public.rendements_demandes;\ncreate trigger rendements_touch before insert or update on public.rendements_demandes\n  for each row execute function public.rendements_touch();\n\nalter table public.rendements_demandes enable row level security;\ndrop policy if exists rend_select on public.rendements_demandes;\ndrop policy if exists rend_insert on public.rendements_demandes;\ndrop policy if exists rend_update on public.rendements_demandes;\ncreate policy rend_select on public.rendements_demandes for select to anon using (true);\ncreate policy rend_insert on public.rendements_demandes for insert to anon with check (true);\ncreate policy rend_update on public.rendements_demandes for update to anon using (true) with check (true);\n-- pas de policy delete : personne ne peut supprimer depuis le lien public\n";
+var sb={url:"https://ebhsxgqychzleiltojwn.supabase.co",key:"",auto:true,last:"",busy:false,msg:"",err:false,p:0};
+function sbLoad(){try{var o=JSON.parse(localStorage.getItem(SBK)||"null");if(o){sb.url=o.url||sb.url;sb.key=o.key||"";sb.auto=o.auto!==false;sb.last=o.last||""}}catch(e){}}
+function sbSaveCfg(){try{localStorage.setItem(SBK,JSON.stringify({url:sb.url,key:sb.key,auto:sb.auto,last:sb.last}))}catch(e){}}
+function sigOf(r){return [r.w,r.d,r.s,r.a,r.dt,r.ha,r.p,r.r].join("|")}
+function sbSigs(){try{return JSON.parse(localStorage.getItem(SBS)||"{}")}catch(e){return {}}}
+function sbOk(){return !!(sb.url&&sb.key)}
+function sbHdr(x){var h={apikey:sb.key,Authorization:"Bearer "+sb.key};for(var k in (x||{}))h[k]=x[k];return h}
+function sbDirty(){var sg=sbSigs();return state.rows.filter(function(r){return sg[r.n]!==sigOf(r)})}
+function sbProg(p,t){sb.p=p;var b=document.getElementById("sbBar"),pc=document.getElementById("sbPct"),m=document.getElementById("sbTxt");if(b)b.style.width=p+"%";if(pc)pc.textContent=Math.round(p)+" %";if(m&&t)m.textContent=t}
+async function sbTest(){
+  if(!sbOk()){sb.msg="Renseignez l’URL et la clé publique.";sb.err=true;render();return}
+  try{var r=await fetch(sb.url+"/rest/v1/rendements_demandes?select=n&limit=1",{headers:sbHdr()});
+    if(r.ok){sb.msg="Connexion réussie : la table rendements_demandes répond.";sb.err=false}
+    else{var t=await r.text();sb.msg="Échec ("+r.status+") : "+t.slice(0,160)+(r.status===404?" — exécutez d’abord le script de création des tables.":"");sb.err=true}}
+  catch(e){sb.msg="Serveur injoignable : "+e.message+" (projet en pause ?)";sb.err=true}
+  render();
+}
+async function sbSync(silent){
+  if(sb.busy||!sbOk())return;sb.busy=true;sb.err=false;
+  try{
+    sbProg(2,"Lecture des données partagées…");
+    var sg=sbSigs(),got=[],off=0,PG=1000;
+    for(;;){
+      var res=await fetch(sb.url+"/rest/v1/rendements_demandes?select=n,d,s,a,w,dt,ha,p,r&order=n&limit="+PG+"&offset="+off,{headers:sbHdr()});
+      if(!res.ok)throw new Error("Lecture refusée ("+res.status+") "+(await res.text()).slice(0,140));
+      var j=await res.json();got=got.concat(j);sbProg(Math.min(35,5+got.length/60),"Lecture : "+got.length+" demandes");
+      if(j.length<PG)break;off+=PG}
+    var idx={};state.rows.forEach(function(r,i){idx[r.n]=i});
+    var add=0,upd=0;
+    got.forEach(function(x){
+      var row={n:x.n,d:x.d,s:canonSup(x.s),a:x.a||"",w:x.w||"",dt:x.dt||"",ha:+x.ha||0,p:x.p,r:x.r,o:"Serveur"},k=idx[x.n];
+      if(k===undefined){idx[x.n]=state.rows.length;state.rows.push(row);sg[x.n]=sigOf(row);add++;return}
+      var L=state.rows[k],sl=sigOf(L),ss=sigOf(row);
+      if(sl===ss){sg[x.n]=sl;return}
+      if(sg[x.n]===sl){state.rows[k]=row;sg[x.n]=ss;upd++}   /* non modifiée ici : le serveur fait foi */
+    });
+    var dirty=state.rows.filter(function(r){return sg[r.n]!==sigOf(r)}),sent=0,CH=400;
+    sbProg(40,dirty.length?"Envoi de "+dirty.length+" demandes…":"Rien à envoyer");
+    for(var i=0;i<dirty.length;i+=CH){
+      var part=dirty.slice(i,i+CH);
+      var pr=await fetch(sb.url+"/rest/v1/rendements_demandes?on_conflict=n",{method:"POST",headers:sbHdr({"Content-Type":"application/json",Prefer:"resolution=merge-duplicates,return=minimal"}),
+        body:JSON.stringify(part.map(function(r){return {n:r.n,d:r.d,s:r.s||null,a:r.a||null,w:r.w||null,dt:r.dt||null,ha:r.ha||0,p:r.p,r:r.r}}))});
+      if(!pr.ok)throw new Error("Envoi refusé ("+pr.status+") "+(await pr.text()).slice(0,140));
+      part.forEach(function(r){sg[r.n]=sigOf(r)});sent+=part.length;
+      sbProg(40+55*Math.min(1,sent/dirty.length),"Envoi : "+sent+" / "+dirty.length);
+    }
+    try{localStorage.setItem(SBS,JSON.stringify(sg))}catch(e){}
+    if(add||upd){ensureWeeks();state.week=null;save()}
+    sb.last=new Date().toISOString();sbSaveCfg();
+    sbProg(100,"Terminé");
+    sb.msg="Synchronisation terminée : "+add+" reçues, "+upd+" mises à jour, "+sent+" envoyées. Total local : "+state.rows.length+".";
+  }catch(e){sb.err=true;sb.msg=(e&&e.message)||String(e);if(/Failed to fetch|NetworkError/i.test(sb.msg))sb.msg="Serveur injoignable (projet Supabase en pause ou sans accès réseau).";sbProg(0,"Échec")}
+  sb.busy=false;
+  if(state.tab==="partage"||!silent)render();
+}
+var sbKickT=null;
+function sbKick(){if(!sb.auto||!sbOk()||sb.busy)return;clearTimeout(sbKickT);sbKickT=setTimeout(function(){sbSync(true)},3000)}
+function tPartage(){
+  var d=sbDirty().length,h='';
+  h+='<div class="cards kpis"><div class="card"><div class="v">'+(sbOk()?"Configuré":"À configurer")+'</div><div class="s">Base partagée Supabase</div></div>'
+   +'<div class="card"><div class="v">'+state.rows.length+'</div><div class="s">demandes sur cet appareil</div></div>'
+   +'<div class="card"><div class="v">'+d+'</div><div class="s">à envoyer au serveur</div></div>'
+   +'<div class="card"><div class="v" style="font-size:16px">'+(sb.last?esc(new Date(sb.last).toLocaleString("fr-FR")):"jamais")+'</div><div class="s">dernière synchronisation</div></div></div>';
+  h+='<div class="panel"><h2>Synchronisation entre appareils</h2>'
+   +'<div class="sub">Chaque appareil envoie ses demandes modifiées au serveur et récupère celles des autres. Ainsi les agents qui importent via le lien alimentent votre plateforme. Les suppressions ne sont pas partagées.</div>'
+   +'<div class="imp2"><div class="f"><label for="sbUrl">URL du projet Supabase</label><input type="text" id="sbUrl" value="'+esc(sb.url)+'" autocomplete="off"></div>'
+   +'<div class="f"><label for="sbKey">Clé publique (anon / publishable)</label><input type="password" id="sbKey" value="'+esc(sb.key)+'" autocomplete="off" placeholder="sb_publishable_… ou eyJ…"></div></div>'
+   +'<div class="modes"><label><input type="checkbox" id="sbAuto"'+(sb.auto?" checked":"")+'> Synchroniser automatiquement (après chaque import, et toutes les 2 minutes)</label></div>'
+   +'<div class="row-actions"><button class="btn" type="button" id="sbRun"'+(sb.busy?" disabled":"")+'>Synchroniser maintenant</button><button class="btn ghost" type="button" id="sbTest">Tester la connexion</button><button class="btn ghost" type="button" id="sbSave">Enregistrer la configuration</button></div>'
+   +'<div style="display:'+(sb.busy||sb.p?"flex":"none")+';flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-weight:600"><span id="sbTxt">'+(sb.busy?"En cours…":"")+'</span><span id="sbPct">'+Math.round(sb.p)+' %</span></div><div style="height:14px;background:var(--line);border-radius:9px;overflow:hidden"><div id="sbBar" style="height:100%;width:'+sb.p+'%;background:var(--accent);transition:width .15s"></div></div></div>'
+   +(sb.msg?'<div class="banner '+(sb.err?"err":"ok")+'">'+esc(sb.msg)+'</div>':'')
+   +'</div>';
+  h+='<div class="panel"><h2>Création des tables (une seule fois)</h2><div class="sub">Dans Supabase → SQL Editor, collez ce script puis cliquez sur Run. Il crée la table <b>rendements_demandes</b>, ses règles d’accès et l’horodatage automatique. Les autres tables de votre projet ne sont pas touchées.</div>'
+   +'<details><summary style="cursor:pointer;font-weight:600">Afficher le script SQL</summary><textarea id="sbSql" rows="14" readonly style="width:100%;font-family:var(--f-mono);font-size:12px">'+esc(SQL_SETUP)+'</textarea></details>'
+   +'<div class="row-actions"><button class="btn ghost" type="button" id="sbCopy">Copier le script</button></div></div>';
+  return h;
+}
+
 /* ---------- navigation ---------- */
-var TABS=[["synth","synthese"],["hier","hierarchie"],["dep","equipes"],["cmp","comparaison"],["saisie","saisie"],["prime","primes"],["ctr","contrats"],["param","parametres"],["imp","importer"]];
+var TABS=[["synth","synthese"],["hier","hierarchie"],["dep","equipes"],["cmp","comparaison"],["saisie","saisie"],["prime","primes"],["partage","partage"],["ctr","contrats"],["param","parametres"],["imp","importer"]];
 var HASHTAB={},TABHASH={};TABS.forEach(function(x){TABHASH[x[0]]=x[1];HASHTAB[x[1]]=x[0]});
 function setTab(t,noHash){
   state.tab=t;if(!noHash){try{location.hash=TABHASH[t]}catch(e){}}
@@ -1279,6 +1361,10 @@ view.addEventListener("click",function(e){
     catch(x){flash("Texte de sauvegarde invalide.","err")}
     return}
   if(t.id==="btnSync"){syncStage();return}
+  if(t.id==="sbRun"){sb.url=(document.getElementById("sbUrl").value||"").trim().replace(/\/+$/,"");sb.key=(document.getElementById("sbKey").value||"").trim();sbSaveCfg();sbSync(false);return}
+  if(t.id==="sbTest"){sb.url=(document.getElementById("sbUrl").value||"").trim().replace(/\/+$/,"");sb.key=(document.getElementById("sbKey").value||"").trim();sbSaveCfg();sbTest();return}
+  if(t.id==="sbSave"){sb.url=(document.getElementById("sbUrl").value||"").trim().replace(/\/+$/,"");sb.key=(document.getElementById("sbKey").value||"").trim();sbSaveCfg();sb.msg="Configuration enregistrée sur cet appareil.";sb.err=false;render();return}
+  if(t.id==="sbCopy"){var ta=document.getElementById("sbSql");try{navigator.clipboard.writeText(SQL_SETUP).then(function(){flash("Script SQL copié.","ok")},function(){ta.parentNode.open=true;ta.select();flash("Sélectionnez puis copiez le script.","")})}catch(x){ta.parentNode.open=true;ta.select()}return}
   if(t.dataset.seeweek){if(state.last&&state.last.week)state.week=state.last.week;save();setTab("synth");return}
   if(t.dataset.nolast){state.last=null;render();return}
   if(t.id==="btnCancelStage"){state.stage=null;render();return}
@@ -1295,6 +1381,7 @@ view.addEventListener("change",function(e){
   if(t.id==="impWe"){state.impWe=t.value;render();return}
   if(t.id==="hSort"){state.hs=t.value;render();return}
   if(t.id==="cSem"){state.cw=t.value;render();return}
+  if(t.id==="sbAuto"){sb.auto=t.checked;sbSaveCfg();return}
   if(t.id==="pDep"){state.pdep=t.value;render();return}
   if(t.id==="pSt"){state.pst=t.value;render();return}
   if(t.id==="cDepF"){state.cdep=t.value;render();return}
@@ -1321,6 +1408,7 @@ state.rows.forEach(function(r){r.s=canonSup(r.s)});
 {var oe=state.cfg.objEq||{},ne={};Object.keys(oe).forEach(function(k){var q=k.split("|");ne[q[0]+"|"+canonSup(q[1])]=oe[k]});state.cfg.objEq=ne}save();
 if(!Array.isArray(state.ctr)){state.ctr=ctrBase();save()}
 {var h0=HASHTAB[location.hash.replace("#","")];if(h0)state.tab=h0}
+sbLoad();setTimeout(function(){if(sb.auto&&sbOk())sbSync(true)},1500);setInterval(function(){if(sb.auto&&sbOk()&&!document.hidden)sbSync(true)},120000);
 render();
 })();
 </script>
