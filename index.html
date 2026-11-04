@@ -1177,8 +1177,9 @@ function render(){
 
 /* ---------- base partagée (Supabase) ---------- */
 var SBK="rendements-sb-v1",SBS="rendements-sb-sig",SQL_SETUP="-- Rendements des agents : tables partagées (à exécuter une fois dans Supabase > SQL Editor)\ncreate table if not exists public.rendements_demandes (\n  n text primary key,\n  d text not null,\n  s text,\n  a text,\n  w text,\n  dt date,\n  ha numeric not null default 0,\n  p text not null default 'c' check (p in ('t','e','c')),\n  r text not null default 'c' check (r in ('t','e','c')),\n  updated_at timestamptz not null default now()\n);\ncreate index if not exists rendements_demandes_w_idx on public.rendements_demandes (w);\n\ncreate or replace function public.rendements_touch() returns trigger\nlanguage plpgsql set search_path = public as $$\nbegin new.updated_at := now(); return new; end $$;\ndrop trigger if exists rendements_touch on public.rendements_demandes;\ncreate trigger rendements_touch before insert or update on public.rendements_demandes\n  for each row execute function public.rendements_touch();\n\nalter table public.rendements_demandes enable row level security;\ndrop policy if exists rend_select on public.rendements_demandes;\ndrop policy if exists rend_insert on public.rendements_demandes;\ndrop policy if exists rend_update on public.rendements_demandes;\ncreate policy rend_select on public.rendements_demandes for select to anon using (true);\ncreate policy rend_insert on public.rendements_demandes for insert to anon with check (true);\ncreate policy rend_update on public.rendements_demandes for update to anon using (true) with check (true);\n-- pas de policy delete : personne ne peut supprimer depuis le lien public\n";
-var sb={url:"https://ebhsxgqychzleiltojwn.supabase.co",key:"",auto:true,last:"",busy:false,msg:"",err:false,p:0};
-function sbLoad(){try{var o=JSON.parse(localStorage.getItem(SBK)||"null");if(o){sb.url=o.url||sb.url;sb.key=o.key||"";sb.auto=o.auto!==false;sb.last=o.last||""}}catch(e){}}
+var SB_URL="https://pkkiqlsubhdvgibrvlld.supabase.co",SB_KEY="sb_publishable_Ygvc2_q3PMDuD47YQYJbKw_umk1d8ZG";
+var sb={url:SB_URL,key:SB_KEY,auto:true,last:"",busy:false,msg:"",err:false,p:0};
+function sbLoad(){try{var o=JSON.parse(localStorage.getItem(SBK)||"null");if(o){sb.url=(o.url&&o.url.indexOf("ebhsxgqychzleiltojwn")<0)?o.url:SB_URL;sb.key=(o.key&&o.url&&o.url.indexOf("ebhsxgqychzleiltojwn")<0)?o.key:SB_KEY;sb.auto=o.auto!==false;sb.last=o.last||""}}catch(e){}}
 function sbSaveCfg(){try{localStorage.setItem(SBK,JSON.stringify({url:sb.url,key:sb.key,auto:sb.auto,last:sb.last}))}catch(e){}}
 function sigOf(r){return [r.w,r.d,r.s,r.a,r.dt,r.ha,r.p,r.r].join("|")}
 function sbSigs(){try{return JSON.parse(localStorage.getItem(SBS)||"{}")}catch(e){return {}}}
@@ -1236,7 +1237,7 @@ var sbKickT=null;
 function sbKick(){if(!sb.auto||!sbOk()||sb.busy)return;clearTimeout(sbKickT);sbKickT=setTimeout(function(){sbSync(true)},3000)}
 function tPartage(){
   var d=sbDirty().length,h='';
-  h+='<div class="cards kpis"><div class="card"><div class="v">'+(sbOk()?"Configuré":"À configurer")+'</div><div class="s">Base partagée Supabase</div></div>'
+  h+='<div class="cards kpis"><div class="card"><div class="v">'+(sbOk()?"Configuré":"À configurer")+'</div><div class="s">Base partagée Supabase (projet rendements-nawa)</div></div>'
    +'<div class="card"><div class="v">'+state.rows.length+'</div><div class="s">demandes sur cet appareil</div></div>'
    +'<div class="card"><div class="v">'+d+'</div><div class="s">à envoyer au serveur</div></div>'
    +'<div class="card"><div class="v" style="font-size:16px">'+(sb.last?esc(new Date(sb.last).toLocaleString("fr-FR")):"jamais")+'</div><div class="s">dernière synchronisation</div></div></div>';
