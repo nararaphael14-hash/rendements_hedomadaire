@@ -334,7 +334,7 @@ details[open]>summary .chev{transform:rotate(90deg)}
 var KEY="rendements-nara-v1";
 var DEF={obj:{BUYO:125,SOUBRE:100,MEAGUI:250},objEq:{},seuil:100,
   weeks:[["14-au-18 setp","2026-09-14","2026-09-18"],["19-au-25 setp","2026-09-19","2026-09-25"],["26 sept-au-04 oct","2026-09-26","2026-10-04"],["2026-10-05_2026-10-11","2026-10-05","2026-10-11"],["2026-10-12_2026-10-18","2026-10-12","2026-10-18"]]};
-var state={rows:[],sample:true,cfg:JSON.parse(JSON.stringify(DEF)),week:null,from:"",to:"",q:"",tab:"synth",cmp:null,open:{},flash:null,ind:"haobj",hf:"all",stage:null,impDep:"",hs:"note",ctr:null,cw:"",cdep:"",cq:"",cedit:null,edit:null,tDep:"",tSup:"",tSupNew:"",tg:[{a:"",n:"",ha:"",p:"c",r:"c"}],eDate:todayISO(),eWeek:"",pdep:"",pst:""};
+var state={rows:[],sample:true,cfg:JSON.parse(JSON.stringify(DEF)),week:null,from:"",to:"",q:"",tab:"synth",cmp:null,open:{},flash:null,ind:"haobj",hf:"all",stage:null,impDep:"",hs:"note",ctr:null,cw:"",cdep:"",cq:"",cedit:null,edit:null,tDep:"",tSup:"",tSupNew:"",tg:[{a:"",n:"",ha:"",p:"c",r:"c"}],eDate:todayISO(),eWeek:"",pdep:"",pst:"",impWk:"",impWs:"",impWe:"",last:null,syncing:false};
 var $=function(s){return document.querySelector(s)};
 var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
 var f1=function(x){return x.toLocaleString("fr-FR",{minimumFractionDigits:1,maximumFractionDigits:1})};
@@ -345,7 +345,7 @@ function todayISO(){var d=new Date();return d.getFullYear()+"-"+String(d.getMont
 function addDays(iso,n){var p=iso.split("-").map(Number);return new Date(Date.UTC(p[0],p[1]-1,p[2]+n)).toISOString().slice(0,10)}
 function fdm(iso){return iso?iso.slice(8,10)+"/"+iso.slice(5,7):""}
 function fdmy(iso){return iso.split("-").reverse().join("/")}
-function wlabel(k){var w=state.cfg.weeks.filter(function(x){return x[0]===k})[0];return w?fdm(w[1])+" → "+fdm(w[2]):k}
+function wlabel(k){var w=state.cfg.weeks.filter(function(x){return x[0]===k})[0];if(w)return fdm(w[1])+" → "+fdm(w[2]);var m=String(k).match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);return m?fdm(m[1])+" → "+fdm(m[2]):k}
 
 /* ---------- persistance ---------- */
 function save(){try{localStorage.setItem(KEY,JSON.stringify({rows:state.rows,sample:state.sample,cfg:state.cfg,ctr:state.ctr,ui:{week:state.week}}))}catch(e){}}
@@ -510,21 +510,50 @@ function upsert(list,replace){
   list.forEach(function(r){if(r.n in idx){state.rows[idx[r.n]]=r;upd++}else{idx[r.n]=state.rows.length;state.rows.push(r);add++}});
   save();return [add,upd];
 }
+function weekChoice(){
+  var k=state.impWk;if(!k)return "";
+  if(k==="new"){var a=state.impWs,b=state.impWe;return (a&&b&&a<=b)?a+"_"+b:""}
+  return k;
+}
 function stagedRows(){
-  var g=state.stage;if(!g)return null;var dep=state.impDep||"";
-  var rows=g.rows.map(function(r){var o={};for(var k in r)o[k]=r[k];if(dep)o.d=dep;return o});
+  var g=state.stage;if(!g)return null;var dep=state.impDep||"",wk=weekChoice();
+  var rows=g.rows.map(function(r){var o={};for(var k in r)o[k]=r[k];if(dep)o.d=dep;if(wk)o.w=wk;return o});
   var idx={};state.rows.forEach(function(r){idx[r.n]=1});
-  var nw=0,up=0,nod=0,teams={};
-  rows.forEach(function(r){if(!r.d)nod++;if(r.n in idx)up++;else nw++;var k=(r.d||"?")+"|"+(r.s||"?");teams[k]=(teams[k]||0)+1});
-  return {rows:rows,nw:nw,up:up,nod:nod,teams:teams};
+  var nw=0,up=0,nod=0,now=0,teams={},weeks={};
+  rows.forEach(function(r){if(!r.d)nod++;if(!r.w)now++;if(r.n in idx)up++;else nw++;var k=(r.d||"?")+"|"+(r.s||"?");teams[k]=(teams[k]||0)+1;var w=r.w||"?";weeks[w]=(weeks[w]||0)+1});
+  return {rows:rows,nw:nw,up:up,nod:nod,now:now,teams:teams,weeks:weeks};
+}
+function setProg(p,txt){
+  var b=document.getElementById("syncBar"),t=document.getElementById("syncPct"),m=document.getElementById("syncTxt");
+  if(b)b.style.width=p+"%";if(t)t.textContent=Math.round(p)+" %";if(m&&txt)m.textContent=txt;
 }
 function syncStage(){
-  var S=stagedRows();if(!S)return;
+  var S=stagedRows();if(!S||state.syncing)return;
   if(S.nod){flash("Choisissez le département : le fichier n’en indique pas pour "+S.nod+" ligne(s).","err");return}
+  if(S.now){flash("Choisissez la semaine : "+S.now+" ligne(s) n’ont pas de semaine.","err");return}
   var rep=(document.querySelector("input[name=mode]:checked")||{}).value==="replace";
-  var res=upsert(S.rows,rep);state.stage=null;state.week=null;var nw=ensureWeeks();
-  flash("Synchronisation terminée : "+res[0]+" demandes ajoutées, "+res[1]+" mises à jour. Total : "+state.rows.length+" demandes."+(nw?" "+nw+" semaine(s) ajoutée(s) aux paramètres.":""),"ok");
-  render();
+  state.syncing=true;var pg=document.getElementById("syncProg"),bt=document.getElementById("btnSync");
+  if(pg)pg.style.display="flex";if(bt)bt.disabled=true;setProg(0,"Préparation…");
+  var list=S.rows;list.forEach(function(r){r.s=canonSup(r.s)});
+  if(state.sample||rep){state.rows=[];state.sample=false}
+  var idx={};state.rows.forEach(function(r,i){idx[r.n]=i});
+  var add=0,upd=0,i=0,N=list.length,CH=Math.max(50,Math.ceil(N/40));
+  (function step(){
+    var end=Math.min(N,i+CH);
+    for(;i<end;i++){var r=list[i];if(r.n in idx){state.rows[idx[r.n]]=r;upd++}else{idx[r.n]=state.rows.length;state.rows.push(r);add++}}
+    setProg(N?i/N*90:90,"Synchronisation : "+i+" / "+N+" demandes");
+    if(i<N){setTimeout(step,0);return}
+    setProg(94,"Enregistrement…");
+    setTimeout(function(){
+      var wk=Object.keys(S.weeks).sort(function(a,b){return S.weeks[b]-S.weeks[a]})[0];
+      if(wk&&!state.cfg.weeks.some(function(x){return x[0]===wk})){var q=parseWeekKey(wk,0);var m=wk.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);if(m)state.cfg.weeks.push([wk,m[1],m[2]])}
+      state.cfg.weeks.sort(function(a,b){return a[1]<b[1]?-1:1});
+      var nw=ensureWeeks();save();setProg(100,"Terminé");
+      state.last={name:state.stage.name,add:add,upd:upd,total:state.rows.length,week:wk,weeks:S.weeks,at:new Date().toLocaleTimeString("fr-FR")};
+      state.stage=null;state.week=wk||null;state.syncing=false;state.impWk="";state.impWs="";state.impWe="";
+      setTimeout(function(){flash(null);render()},450);
+    },60);
+  })();
 }
 function doImport(file){
   var rd=new FileReader();
@@ -752,14 +781,20 @@ function tImport(){
   var h='<div class="panel"><h2>Importer un fichier Excel par département</h2>'
    +'<div class="imp2"><div class="f"><label for="impDep">1 · Département</label><select id="impDep"><option value="">Selon la colonne DEPARTEMENT du fichier</option>'+deps.map(function(d){return '<option value="'+esc(d)+'"'+(state.impDep===d?" selected":"")+'>'+esc(dn(d))+'</option>'}).join("")+'</select></div>'
    +'<div class="f"><label>2 · Fichier (.xlsx, .xls, .csv)</label><div class="drop" id="drop"><label class="btn" for="file" tabindex="0" id="lblFile">Choisir un fichier</label><span class="sub">'+(state.stage?esc(state.stage.name):'ou déposer le fichier ici')+'</span></div></div></div>'
+   +'<div class="f"><label for="impWk">3 · Semaine</label><select id="impWk"><option value="">Selon le fichier (colonne Semaine ou date)</option>'+state.cfg.weeks.map(function(w){return '<option value="'+esc(w[0])+'"'+(state.impWk===w[0]?" selected":"")+'>'+esc(fdm(w[1])+" → "+fdm(w[2]))+'</option>'}).join("")+'<option value="new"'+(state.impWk==="new"?" selected":"")+'>Nouvelle semaine…</option></select></div>'
+   +(state.impWk==="new"?'<div class="imp2"><div class="f"><label for="impWs">Du</label><input type="date" id="impWs" value="'+esc(state.impWs)+'"></div><div class="f"><label for="impWe">Au</label><input type="date" id="impWe" value="'+esc(state.impWe)+'"></div></div>':'')
    +'<div class="sub">Colonnes attendues (comme le fichier global) : N°DEMANDE, superficie, Date création demande, CE (agent), SUPERVISEUR. Facultatives : Semaine, DEPARTEMENT, Pvcl à créer / en cours / terminé, RDC à créer / en cours / terminé. Un N° de demande déjà présent est mis à jour, sinon la ligne est ajoutée. Rien n’est enregistré avant « Synchroniser ».</div>'
    +'<div class="modes"><label><input type="radio" name="mode" value="merge" checked> Ajouter et mettre à jour</label><label><input type="radio" name="mode" value="replace"> Remplacer toutes les données</label></div>';
   if(S){
-    h+='<div class="stage"><h3>3 · Aperçu avant synchronisation</h3><div class="ks2"><div class="card"><div class="v">'+S.rows.length+'</div><div class="s">lignes lues</div></div><div class="card"><div class="v">'+S.nw+'</div><div class="s">nouvelles demandes</div></div><div class="card"><div class="v">'+S.up+'</div><div class="s">mises à jour</div></div></div>';
+    h+='<div class="stage"><h3>4 · Aperçu avant synchronisation</h3><div class="ks2"><div class="card"><div class="v">'+S.rows.length+'</div><div class="s">lignes lues</div></div><div class="card"><div class="v">'+S.nw+'</div><div class="s">nouvelles demandes</div></div><div class="card"><div class="v">'+S.up+'</div><div class="s">mises à jour</div></div></div>';
+    h+='<div class="sub">Semaine(s) : '+Object.keys(S.weeks).map(function(k){return k==="?"?'<b style="color:var(--bad)">non définie</b> ('+S.weeks[k]+')':esc(wlabel(k))+' ('+S.weeks[k]+' demandes)'}).join(" · ")+'</div>';
+    if(S.now)h+='<div class="banner err">Semaine manquante pour '+S.now+' ligne(s) : choisissez-la dans « 3 · Semaine ».</div>';
     if(S.nod)h+='<div class="banner err">Département manquant pour '+S.nod+' ligne(s) : choisissez-le dans « 1 · Département ».</div>';
     h+='<div class="scroll"><table style="min-width:0"><thead><tr><th>Département</th><th>Équipe (superviseur)</th><th class="num">Demandes</th></tr></thead><tbody>'+Object.keys(S.teams).sort().map(function(k){var p=k.split("|");return '<tr><td>'+esc(p[0]==="?"?"— à choisir —":dn(p[0]))+'</td><td class="nm">'+esc(p[1])+'</td><td class="num">'+S.teams[k]+'</td></tr>'}).join("")+'</tbody></table></div>'
-     +'<div class="row-actions"><button class="btn" type="button" id="btnSync"'+(S.nod?' disabled':'')+'>Synchroniser</button><button class="btn ghost" type="button" id="btnCancelStage">Annuler</button></div></div>';
+     +'<div class="row-actions"><button class="btn" type="button" id="btnSync"'+((S.nod||S.now)?' disabled':'')+'>Synchroniser</button><button class="btn ghost" type="button" id="btnCancelStage">Annuler</button></div>'
+     +'<div id="syncProg" style="display:none;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-weight:600"><span id="syncTxt">Préparation…</span><span id="syncPct">0 %</span></div><div style="height:14px;background:var(--line);border-radius:9px;overflow:hidden"><div id="syncBar" style="height:100%;width:0;background:var(--accent);transition:width .15s"></div></div></div></div>';
   }
+  if(state.last){var L=state.last;h+='<div class="banner ok" style="flex-direction:column;align-items:stretch"><div style="display:flex;justify-content:space-between;font-weight:700"><span>✔ Synchronisation terminée à '+esc(L.at)+' · '+esc(L.name)+'</span><span>100 %</span></div><div style="height:10px;background:var(--surface);border-radius:9px;overflow:hidden"><div style="height:100%;width:100%;background:var(--vert)"></div></div><div>'+L.add+' demandes ajoutées · '+L.upd+' mises à jour · total '+L.total+' demandes'+(L.week?' · semaine '+esc(wlabel(L.week)):'')+'</div><div class="row-actions"><button class="btn" type="button" data-seeweek="1">Voir la semaine importée</button><button class="btn ghost" type="button" data-nolast="1">Fermer</button></div></div>'}
   h+='<div class="row-actions"><button class="btn ghost" id="btnBase" type="button">Recharger la base d’origine ('+BASE_ROWS.length+' demandes)</button><button class="btn ghost" id="btnClear" type="button">Vider les données</button></div>';
   var cnt={};state.rows.forEach(function(r){var o=cnt[r.w||"?"]||(cnt[r.w||"?"]={n:0,a:{}});o.n++;o.a[r.d+r.s+r.a]=1});
   var ws=weeksList();
@@ -1244,6 +1279,8 @@ view.addEventListener("click",function(e){
     catch(x){flash("Texte de sauvegarde invalide.","err")}
     return}
   if(t.id==="btnSync"){syncStage();return}
+  if(t.dataset.seeweek){if(state.last&&state.last.week)state.week=state.last.week;save();setTab("synth");return}
+  if(t.dataset.nolast){state.last=null;render();return}
   if(t.id==="btnCancelStage"){state.stage=null;render();return}
   if(t.id==="eqReset"){c.objEq={};save();render();return}
   if(t.id==="addWk"){var l=c.weeks[c.weeks.length-1],st=l?addDays(l[2],1):todayISO();c.weeks.push(["nouvelle semaine",st,addDays(st,6)]);save();render();return}
@@ -1253,6 +1290,9 @@ view.addEventListener("change",function(e){
   var t=e.target,c=state.cfg;
   if(t.id==="cmpInd"){state.ind=t.value;render();return}
   if(t.id==="impDep"){state.impDep=t.value;render();return}
+  if(t.id==="impWk"){state.impWk=t.value;if(t.value==="new"&&!state.impWs&&state.stage){var ds=state.stage.rows.map(function(r){return r.dt}).filter(Boolean).sort();if(ds.length){state.impWs=ds[0];state.impWe=addDays(ds[0],6)}}render();return}
+  if(t.id==="impWs"){state.impWs=t.value;if(t.value&&(!state.impWe||state.impWe<t.value))state.impWe=addDays(t.value,6);render();return}
+  if(t.id==="impWe"){state.impWe=t.value;render();return}
   if(t.id==="hSort"){state.hs=t.value;render();return}
   if(t.id==="cSem"){state.cw=t.value;render();return}
   if(t.id==="pDep"){state.pdep=t.value;render();return}
