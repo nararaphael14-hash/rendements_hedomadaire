@@ -1175,36 +1175,50 @@ function render(){
   mobileTables(v);filtUI();
 }
 
-/* ---------- base partagée (Supabase) ---------- */
-var SBK="rendements-sb-v1",SBS="rendements-sb-sig",SQL_SETUP="-- Rendements des agents : tables partagées (à exécuter une fois dans Supabase > SQL Editor)\ncreate table if not exists public.rendements_demandes (\n  n text primary key,\n  d text not null,\n  s text,\n  a text,\n  w text,\n  dt date,\n  ha numeric not null default 0,\n  p text not null default 'c' check (p in ('t','e','c')),\n  r text not null default 'c' check (r in ('t','e','c')),\n  updated_at timestamptz not null default now()\n);\ncreate index if not exists rendements_demandes_w_idx on public.rendements_demandes (w);\n\ncreate or replace function public.rendements_touch() returns trigger\nlanguage plpgsql set search_path = public as $$\nbegin new.updated_at := now(); return new; end $$;\ndrop trigger if exists rendements_touch on public.rendements_demandes;\ncreate trigger rendements_touch before insert or update on public.rendements_demandes\n  for each row execute function public.rendements_touch();\n\nalter table public.rendements_demandes enable row level security;\ndrop policy if exists rend_select on public.rendements_demandes;\ndrop policy if exists rend_insert on public.rendements_demandes;\ndrop policy if exists rend_update on public.rendements_demandes;\ncreate policy rend_select on public.rendements_demandes for select to anon using (true);\ncreate policy rend_insert on public.rendements_demandes for insert to anon with check (true);\ncreate policy rend_update on public.rendements_demandes for update to anon using (true) with check (true);\n-- pas de policy delete : personne ne peut supprimer depuis le lien public\n";
+/* ---------- base partagée (Supabase) : accès par code personnel ---------- */
+var SBK="rendements-sb-v2",SBS="rendements-sb-sig2",SQL_SETUP="-- Rendements des agents : tables + accès par code personnel (Supabase > SQL Editor)\ncreate table if not exists public.rendements_demandes (\n  n text primary key, d text not null, s text, a text, w text, dt date,\n  ha numeric not null default 0,\n  p text not null default 'c' check (p in ('t','e','c')),\n  r text not null default 'c' check (r in ('t','e','c')),\n  updated_at timestamptz not null default now()\n);\ncreate index if not exists rendements_demandes_w_idx on public.rendements_demandes (w);\ncreate or replace function public.rendements_touch() returns trigger language plpgsql set search_path = public as $$\nbegin new.updated_at := now(); return new; end $$;\ndrop trigger if exists rendements_touch on public.rendements_demandes;\ncreate trigger rendements_touch before insert or update on public.rendements_demandes for each row execute function public.rendements_touch();\nalter table public.rendements_demandes enable row level security;\ndrop policy if exists rend_select on public.rendements_demandes;\ndrop policy if exists rend_insert on public.rendements_demandes;\ndrop policy if exists rend_update on public.rendements_demandes;\n-- aucune policy : la table n'est accessible que par les fonctions ci-dessous\n\ncreate table if not exists public.rendements_acces (\n  id uuid primary key default gen_random_uuid(),\n  nom text not null,\n  role text not null check (role in ('admin','agent','lecture')),\n  dep text,                       -- agent : limité à ce département (BUYO, SOUBRE, MEAGUI) ; vide = tous\n  code_hash text not null unique, -- sha256 du code : le code lui-même n'est jamais stocké\n  actif boolean not null default true,\n  cree_le timestamptz not null default now(),\n  dernier_acces timestamptz\n);\nalter table public.rendements_acces enable row level security;\n\ncreate or replace function public.rend_auth(p_code text) returns public.rendements_acces\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces;\nbegin\n  select * into u from public.rendements_acces\n   where code_hash = encode(sha256(convert_to(upper(trim(coalesce(p_code,''))),'utf8')),'hex') and actif;\n  if not found then raise exception 'ACCES_REFUSE'; end if;\n  update public.rendements_acces set dernier_acces = now() where id = u.id;\n  return u;\nend $$;\nrevoke all on function public.rend_auth(text) from public, anon, authenticated;\n\ncreate or replace function public.rend_whoami(p_code text) returns jsonb\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces;\nbegin u := public.rend_auth(p_code);\n  return jsonb_build_object('nom',u.nom,'role',u.role,'dep',u.dep); end $$;\n\ncreate or replace function public.rend_pull(p_code text, p_offset int default 0, p_limit int default 1000) returns jsonb\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces; res jsonb;\nbegin u := public.rend_auth(p_code);\n  select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb) into res from (\n    select n,d,s,a,w,dt,ha,p,r from public.rendements_demandes order by n offset greatest(p_offset,0) limit least(greatest(p_limit,1),2000)) t;\n  return res; end $$;\n\ncreate or replace function public.rend_push(p_code text, p_rows jsonb) returns int\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces; k int;\nbegin u := public.rend_auth(p_code);\n  if u.role = 'lecture' then raise exception 'LECTURE_SEULE'; end if;\n  insert into public.rendements_demandes(n,d,s,a,w,dt,ha,p,r)\n  select x.n,x.d,x.s,x.a,x.w,x.dt,coalesce(x.ha,0),coalesce(x.p,'c'),coalesce(x.r,'c')\n    from jsonb_to_recordset(p_rows) as x(n text,d text,s text,a text,w text,dt date,ha numeric,p text,r text)\n   where x.n is not null and x.d is not null and (u.role = 'admin' or u.dep is null or u.dep = '' or x.d = u.dep)\n  on conflict (n) do update set d=excluded.d,s=excluded.s,a=excluded.a,w=excluded.w,dt=excluded.dt,ha=excluded.ha,p=excluded.p,r=excluded.r;\n  get diagnostics k = row_count; return k; end $$;\n\ncreate or replace function public.rend_admin_list(p_code text) returns jsonb\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces;\nbegin u := public.rend_auth(p_code);\n  if u.role <> 'admin' then raise exception 'ADMIN_REQUIS'; end if;\n  return (select coalesce(jsonb_agg(jsonb_build_object('id',id,'nom',nom,'role',role,'dep',dep,'actif',actif,'cree_le',cree_le,'dernier_acces',dernier_acces) order by cree_le),'[]'::jsonb) from public.rendements_acces); end $$;\n\ncreate or replace function public.rend_admin_add(p_code text, p_nom text, p_role text, p_dep text default null) returns jsonb\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces; c text; i uuid;\nbegin u := public.rend_auth(p_code);\n  if u.role <> 'admin' then raise exception 'ADMIN_REQUIS'; end if;\n  if p_role not in ('admin','agent','lecture') or coalesce(trim(p_nom),'') = '' then raise exception 'PARAMETRES_INVALIDES'; end if;\n  c := 'RDT-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)) || '-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,6));\n  insert into public.rendements_acces(nom,role,dep,code_hash)\n  values (trim(p_nom),p_role,nullif(upper(trim(coalesce(p_dep,''))),''),encode(sha256(convert_to(c,'utf8')),'hex')) returning id into i;\n  return jsonb_build_object('id',i,'code',c); end $$;\n\ncreate or replace function public.rend_admin_reset(p_code text, p_id uuid) returns jsonb\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces; c text;\nbegin u := public.rend_auth(p_code);\n  if u.role <> 'admin' then raise exception 'ADMIN_REQUIS'; end if;\n  c := 'RDT-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)) || '-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,6));\n  update public.rendements_acces set code_hash = encode(sha256(convert_to(c,'utf8')),'hex'), actif = true where id = p_id;\n  if not found then raise exception 'INTROUVABLE'; end if;\n  return jsonb_build_object('id',p_id,'code',c); end $$;\n\ncreate or replace function public.rend_admin_set(p_code text, p_id uuid, p_actif boolean) returns void\nlanguage plpgsql security definer set search_path = public as $$\ndeclare u public.rendements_acces;\nbegin u := public.rend_auth(p_code);\n  if u.role <> 'admin' then raise exception 'ADMIN_REQUIS'; end if;\n  if p_id = u.id and not p_actif then raise exception 'AUTO_DESACTIVATION'; end if;\n  update public.rendements_acces set actif = p_actif where id = p_id; end $$;\n\ngrant execute on function public.rend_whoami(text), public.rend_pull(text,int,int), public.rend_push(text,jsonb),\n  public.rend_admin_list(text), public.rend_admin_add(text,text,text,text), public.rend_admin_reset(text,uuid), public.rend_admin_set(text,uuid,boolean) to anon;\n\n-- Premier administrateur (à exécuter une fois, en remplaçant VOTRE-CODE) :\n-- insert into public.rendements_acces(nom,role,code_hash) values ('Administrateur','admin', encode(sha256(convert_to(upper('VOTRE-CODE'),'utf8')),'hex'));\n";
 var SB_URL="https://pkkiqlsubhdvgibrvlld.supabase.co",SB_KEY="sb_publishable_Ygvc2_q3PMDuD47YQYJbKw_umk1d8ZG";
-var sb={url:SB_URL,key:SB_KEY,auto:true,last:"",busy:false,msg:"",err:false,p:0};
-function sbLoad(){try{var o=JSON.parse(localStorage.getItem(SBK)||"null");if(o){sb.url=(o.url&&o.url.indexOf("ebhsxgqychzleiltojwn")<0)?o.url:SB_URL;sb.key=(o.key&&o.url&&o.url.indexOf("ebhsxgqychzleiltojwn")<0)?o.key:SB_KEY;sb.auto=o.auto!==false;sb.last=o.last||""}}catch(e){}}
-function sbSaveCfg(){try{localStorage.setItem(SBK,JSON.stringify({url:sb.url,key:sb.key,auto:sb.auto,last:sb.last}))}catch(e){}}
+var sb={code:"",who:null,auto:true,last:"",busy:false,msg:"",err:false,p:0,users:null,newCode:null};
+function sbLoad(){try{var o=JSON.parse(localStorage.getItem(SBK)||"null");if(o){sb.code=o.code||"";sb.auto=o.auto!==false;sb.last=o.last||"";sb.who=o.who||null}}catch(e){}}
+function sbSaveCfg(){try{localStorage.setItem(SBK,JSON.stringify({code:sb.code,auto:sb.auto,last:sb.last,who:sb.who}))}catch(e){}}
 function sigOf(r){return [r.w,r.d,r.s,r.a,r.dt,r.ha,r.p,r.r].join("|")}
 function sbSigs(){try{return JSON.parse(localStorage.getItem(SBS)||"{}")}catch(e){return {}}}
-function sbOk(){return !!(sb.url&&sb.key)}
-function sbHdr(x){var h={apikey:sb.key,Authorization:"Bearer "+sb.key};for(var k in (x||{}))h[k]=x[k];return h}
+function sbOk(){return !!sb.code}
 function sbDirty(){var sg=sbSigs();return state.rows.filter(function(r){return sg[r.n]!==sigOf(r)})}
 function sbProg(p,t){sb.p=p;var b=document.getElementById("sbBar"),pc=document.getElementById("sbPct"),m=document.getElementById("sbTxt");if(b)b.style.width=p+"%";if(pc)pc.textContent=Math.round(p)+" %";if(m&&t)m.textContent=t}
-async function sbTest(){
-  if(!sbOk()){sb.msg="Renseignez l’URL et la clé publique.";sb.err=true;render();return}
-  try{var r=await fetch(sb.url+"/rest/v1/rendements_demandes?select=n&limit=1",{headers:sbHdr()});
-    if(r.ok){sb.msg="Connexion réussie : la table rendements_demandes répond.";sb.err=false}
-    else{var t=await r.text();sb.msg="Échec ("+r.status+") : "+t.slice(0,160)+(r.status===404?" — exécutez d’abord le script de création des tables.":"");sb.err=true}}
-  catch(e){sb.msg="Serveur injoignable : "+e.message+" (projet en pause ?)";sb.err=true}
+function sbMsg(m){
+  m=String(m||"");
+  if(/ACCES_REFUSE/.test(m))return "Code d’accès refusé ou désactivé.";
+  if(/LECTURE_SEULE/.test(m))return "Ce code est en lecture seule : envoi impossible.";
+  if(/ADMIN_REQUIS/.test(m))return "Action réservée aux administrateurs.";
+  if(/AUTO_DESACTIVATION/.test(m))return "Vous ne pouvez pas désactiver votre propre code.";
+  if(/restricted|quota/i.test(m))return "Serveur restreint (quota Supabase dépassé).";
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "Serveur injoignable (réseau ou projet en pause).";
+  return m;
+}
+async function rpc(fn,args){
+  var r=await fetch(SB_URL+"/rest/v1/rpc/"+fn,{method:"POST",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(args)});
+  var t=await r.text(),j=null;try{j=t?JSON.parse(t):null}catch(e){}
+  if(!r.ok)throw new Error(sbMsg((j&&(j.message||j.hint))||t||("Erreur "+r.status)));
+  return j;
+}
+async function sbLogin(code){
+  sb.code=(code||"").trim().toUpperCase();sb.who=null;sb.users=null;sb.newCode=null;
+  if(!sb.code){sbSaveCfg();sb.msg="Saisissez votre code d’accès.";sb.err=true;render();return}
+  try{sb.who=await rpc("rend_whoami",{p_code:sb.code});sb.msg="Connecté : "+sb.who.nom+" ("+sb.who.role+(sb.who.dep?" · "+sb.who.dep:"")+").";sb.err=false;sbSaveCfg();
+    if(sb.who.role==="admin")await sbAdminLoad(true);render();sbSync(false);return}
+  catch(e){sb.who=null;sb.code="";sb.msg=sbMsg(e.message);sb.err=true;sbSaveCfg()}
   render();
 }
+function sbLogout(){sb.code="";sb.who=null;sb.users=null;sb.newCode=null;sb.msg="Déconnecté de la base partagée sur cet appareil.";sb.err=false;sbSaveCfg();render()}
 async function sbSync(silent){
   if(sb.busy||!sbOk())return;sb.busy=true;sb.err=false;
   try{
-    sbProg(2,"Lecture des données partagées…");
+    sbProg(2,"Connexion…");
+    if(!sb.who){sb.who=await rpc("rend_whoami",{p_code:sb.code});sbSaveCfg()}
+    sbProg(5,"Lecture des données partagées…");
     var sg=sbSigs(),got=[],off=0,PG=1000;
-    for(;;){
-      var res=await fetch(sb.url+"/rest/v1/rendements_demandes?select=n,d,s,a,w,dt,ha,p,r&order=n&limit="+PG+"&offset="+off,{headers:sbHdr()});
-      if(!res.ok)throw new Error("Lecture refusée ("+res.status+") "+(await res.text()).slice(0,140));
-      var j=await res.json();got=got.concat(j);sbProg(Math.min(35,5+got.length/60),"Lecture : "+got.length+" demandes");
-      if(j.length<PG)break;off+=PG}
+    for(;;){var j=await rpc("rend_pull",{p_code:sb.code,p_offset:off,p_limit:PG});got=got.concat(j);sbProg(Math.min(35,5+got.length/60),"Lecture : "+got.length+" demandes");if(j.length<PG)break;off+=PG}
     var idx={};state.rows.forEach(function(r,i){idx[r.n]=i});
     var add=0,upd=0;
     got.forEach(function(x){
@@ -1212,47 +1226,61 @@ async function sbSync(silent){
       if(k===undefined){idx[x.n]=state.rows.length;state.rows.push(row);sg[x.n]=sigOf(row);add++;return}
       var L=state.rows[k],sl=sigOf(L),ss=sigOf(row);
       if(sl===ss){sg[x.n]=sl;return}
-      if(sg[x.n]===sl){state.rows[k]=row;sg[x.n]=ss;upd++}   /* non modifiée ici : le serveur fait foi */
+      if(sg[x.n]===sl){state.rows[k]=row;sg[x.n]=ss;upd++}
     });
-    var dirty=state.rows.filter(function(r){return sg[r.n]!==sigOf(r)}),sent=0,CH=400;
-    sbProg(40,dirty.length?"Envoi de "+dirty.length+" demandes…":"Rien à envoyer");
-    for(var i=0;i<dirty.length;i+=CH){
-      var part=dirty.slice(i,i+CH);
-      var pr=await fetch(sb.url+"/rest/v1/rendements_demandes?on_conflict=n",{method:"POST",headers:sbHdr({"Content-Type":"application/json",Prefer:"resolution=merge-duplicates,return=minimal"}),
-        body:JSON.stringify(part.map(function(r){return {n:r.n,d:r.d,s:r.s||null,a:r.a||null,w:r.w||null,dt:r.dt||null,ha:r.ha||0,p:r.p,r:r.r}}))});
-      if(!pr.ok)throw new Error("Envoi refusé ("+pr.status+") "+(await pr.text()).slice(0,140));
+    var sent=0,ro=sb.who&&sb.who.role==="lecture";
+    var dirty=ro?[]:state.rows.filter(function(r){return sg[r.n]!==sigOf(r)});
+    sbProg(40,dirty.length?"Envoi de "+dirty.length+" demandes…":(ro?"Lecture seule : aucun envoi":"Rien à envoyer"));
+    for(var i=0;i<dirty.length;i+=400){
+      var part=dirty.slice(i,i+400);
+      await rpc("rend_push",{p_code:sb.code,p_rows:part.map(function(r){return {n:r.n,d:r.d,s:r.s||null,a:r.a||null,w:r.w||null,dt:r.dt||null,ha:r.ha||0,p:r.p,r:r.r}})});
       part.forEach(function(r){sg[r.n]=sigOf(r)});sent+=part.length;
       sbProg(40+55*Math.min(1,sent/dirty.length),"Envoi : "+sent+" / "+dirty.length);
     }
     try{localStorage.setItem(SBS,JSON.stringify(sg))}catch(e){}
     if(add||upd){ensureWeeks();state.week=null;save()}
-    sb.last=new Date().toISOString();sbSaveCfg();
-    sbProg(100,"Terminé");
+    sb.last=new Date().toISOString();sbSaveCfg();sbProg(100,"Terminé");
     sb.msg="Synchronisation terminée : "+add+" reçues, "+upd+" mises à jour, "+sent+" envoyées. Total local : "+state.rows.length+".";
-  }catch(e){sb.err=true;sb.msg=(e&&e.message)||String(e);if(/Failed to fetch|NetworkError/i.test(sb.msg))sb.msg="Serveur injoignable (projet Supabase en pause ou sans accès réseau).";sbProg(0,"Échec")}
+  }catch(e){sb.err=true;sb.msg=sbMsg(e&&e.message);sbProg(0,"Échec");if(/refusé/.test(sb.msg)){sb.who=null}}
   sb.busy=false;
   if(state.tab==="partage"||!silent)render();
 }
 var sbKickT=null;
 function sbKick(){if(!sb.auto||!sbOk()||sb.busy)return;clearTimeout(sbKickT);sbKickT=setTimeout(function(){sbSync(true)},3000)}
+async function sbAdminLoad(quiet){try{sb.users=await rpc("rend_admin_list",{p_code:sb.code})}catch(e){sb.users=null;if(!quiet){sb.msg=sbMsg(e.message);sb.err=true}}}
+async function sbAdminDo(fn,args,okMsg){
+  try{var r=await rpc(fn,Object.assign({p_code:sb.code},args));await sbAdminLoad(true);sb.msg=okMsg;sb.err=false;return r}
+  catch(e){sb.msg=sbMsg(e.message);sb.err=true;return null}
+}
+function fdt(iso){return iso?new Date(iso).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"jamais"}
 function tPartage(){
-  var d=sbDirty().length,h='';
-  h+='<div class="cards kpis"><div class="card"><div class="v">'+(sbOk()?"Configuré":"À configurer")+'</div><div class="s">Base partagée Supabase (projet rendements-nawa)</div></div>'
+  var d=sbDirty().length,h='',w=sb.who,adm=w&&w.role==="admin";
+  h+='<div class="cards kpis"><div class="card"><div class="v" style="font-size:18px">'+(w?esc(w.nom):(sbOk()?"Code enregistré":"Non connecté"))+'</div><div class="s">'+(w?"rôle : "+esc(w.role)+(w.dep?" · "+esc(dn(w.dep)):""):"Saisissez votre code d’accès")+'</div></div>'
    +'<div class="card"><div class="v">'+state.rows.length+'</div><div class="s">demandes sur cet appareil</div></div>'
    +'<div class="card"><div class="v">'+d+'</div><div class="s">à envoyer au serveur</div></div>'
    +'<div class="card"><div class="v" style="font-size:16px">'+(sb.last?esc(new Date(sb.last).toLocaleString("fr-FR")):"jamais")+'</div><div class="s">dernière synchronisation</div></div></div>';
   h+='<div class="panel"><h2>Synchronisation entre appareils</h2>'
-   +'<div class="sub">Chaque appareil envoie ses demandes modifiées au serveur et récupère celles des autres. Ainsi les agents qui importent via le lien alimentent votre plateforme. Les suppressions ne sont pas partagées.</div>'
-   +'<div class="imp2"><div class="f"><label for="sbUrl">URL du projet Supabase</label><input type="text" id="sbUrl" value="'+esc(sb.url)+'" autocomplete="off"></div>'
-   +'<div class="f"><label for="sbKey">Clé publique (anon / publishable)</label><input type="password" id="sbKey" value="'+esc(sb.key)+'" autocomplete="off" placeholder="sb_publishable_… ou eyJ…"></div></div>'
+   +'<div class="sub">Chaque personne se connecte avec <b>son code d’accès personnel</b> donné par l’administrateur. L’appareil envoie ses demandes modifiées et récupère celles des autres. Sans code, l’application reste utilisable en local.</div>'
+   +'<div class="imp2"><div class="f"><label for="sbCode">Code d’accès</label><input type="password" id="sbCode" value="'+esc(sb.code)+'" autocomplete="off" placeholder="RDT-XXXXXX-XXXXXX"></div>'
+   +'<div class="row-actions"><button class="btn" type="button" id="sbLogin">Se connecter</button>'+(sbOk()?'<button class="btn ghost" type="button" id="sbLogout">Se déconnecter</button>':'')+'</div></div>'
    +'<div class="modes"><label><input type="checkbox" id="sbAuto"'+(sb.auto?" checked":"")+'> Synchroniser automatiquement (après chaque import, et toutes les 2 minutes)</label></div>'
-   +'<div class="row-actions"><button class="btn" type="button" id="sbRun"'+(sb.busy?" disabled":"")+'>Synchroniser maintenant</button><button class="btn ghost" type="button" id="sbTest">Tester la connexion</button><button class="btn ghost" type="button" id="sbSave">Enregistrer la configuration</button></div>'
+   +(sbOk()?'<div class="row-actions"><button class="btn" type="button" id="sbRun"'+(sb.busy?" disabled":"")+'>Synchroniser maintenant</button></div>':'')
    +'<div style="display:'+(sb.busy||sb.p?"flex":"none")+';flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-weight:600"><span id="sbTxt">'+(sb.busy?"En cours…":"")+'</span><span id="sbPct">'+Math.round(sb.p)+' %</span></div><div style="height:14px;background:var(--line);border-radius:9px;overflow:hidden"><div id="sbBar" style="height:100%;width:'+sb.p+'%;background:var(--accent);transition:width .15s"></div></div></div>'
    +(sb.msg?'<div class="banner '+(sb.err?"err":"ok")+'">'+esc(sb.msg)+'</div>':'')
    +'</div>';
-  h+='<div class="panel"><h2>Création des tables (une seule fois)</h2><div class="sub">Dans Supabase → SQL Editor, collez ce script puis cliquez sur Run. Il crée la table <b>rendements_demandes</b>, ses règles d’accès et l’horodatage automatique. Les autres tables de votre projet ne sont pas touchées.</div>'
-   +'<details><summary style="cursor:pointer;font-weight:600">Afficher le script SQL</summary><textarea id="sbSql" rows="14" readonly style="width:100%;font-family:var(--f-mono);font-size:12px">'+esc(SQL_SETUP)+'</textarea></details>'
-   +'<div class="row-actions"><button class="btn ghost" type="button" id="sbCopy">Copier le script</button></div></div>';
+  if(adm){
+    h+='<div class="panel"><h2>Administration · accès à la synchronisation</h2>'
+     +'<div class="sub">Créez un code par personne. Le code n’est affiché qu’une fois : transmettez-le avec le lien de la plateforme. Un agent « Buyo » ne peut envoyer que des demandes de Buyo. « Lecture » récupère les données sans pouvoir en envoyer.</div>'
+     +(sb.newCode?'<div class="banner ok" style="flex-direction:column;align-items:stretch"><div>Code pour <b>'+esc(sb.newCode.nom)+'</b> :</div><div style="font:700 22px var(--f-mono);letter-spacing:.04em">'+esc(sb.newCode.code)+'</div><div class="row-actions"><button class="btn" type="button" data-sbcopy="'+esc(sb.newCode.code)+'">Copier le code</button><button class="btn ghost" type="button" data-sbhide="1">Masquer</button></div><div class="sub">Notez-le maintenant, il ne sera plus affiché.</div></div>':'')
+     +'<div class="form4"><div class="f"><label for="adNom">Nom de la personne</label><input type="text" id="adNom" placeholder="ex. KOUASSI Michel"></div>'
+     +'<div class="f"><label for="adRole">Rôle</label><select id="adRole"><option value="agent">Agent (envoie + reçoit)</option><option value="lecture">Lecture seule</option><option value="admin">Administrateur</option></select></div>'
+     +'<div class="f"><label for="adDep">Département (agent)</label><select id="adDep"><option value="">Tous</option>'+Object.keys(state.cfg.obj).map(function(x){return '<option value="'+esc(x)+'">'+esc(dn(x))+'</option>'}).join("")+'</select></div>'
+     +'<div class="f"><label>&nbsp;</label><button class="btn" type="button" id="adAdd">Créer le code</button></div></div>'
+     +'<div class="scroll"><table><thead><tr><th>Nom</th><th>Rôle</th><th>Département</th><th>Statut</th><th>Dernier accès</th><th></th></tr></thead><tbody>'
+     +((sb.users||[]).map(function(u){return '<tr><td class="nm">'+esc(u.nom)+'</td><td>'+esc(u.role)+'</td><td>'+(u.dep?esc(dn(u.dep)):"Tous")+'</td><td>'+(u.actif?'<span class="pill p-vert">Actif</span>':'<span class="pill p-none">Désactivé</span>')+'</td><td>'+fdt(u.dernier_acces)+'</td><td><button class="btn ghost sm" type="button" data-sbact="tog:'+u.id+':'+(u.actif?0:1)+'">'+(u.actif?"Désactiver":"Activer")+'</button> <button class="btn ghost sm" type="button" data-sbact="reset:'+u.id+'">Nouveau code</button></td></tr>'}).join("")||'<tr><td colspan="6" class="sub">Aucun accès.</td></tr>')
+     +'</tbody></table></div></div>';
+    h+='<div class="panel"><h2>Script de la base</h2><div class="sub">Pour recréer la base sur un autre projet Supabase (SQL Editor → Run). Réservé aux administrateurs.</div><details><summary style="cursor:pointer;font-weight:600">Afficher le script SQL</summary><textarea id="sbSql" rows="12" readonly style="width:100%;font-family:var(--f-mono);font-size:12px">'+esc(SQL_SETUP)+'</textarea></details><div class="row-actions"><button class="btn ghost" type="button" data-sbcopy="__sql">Copier le script</button></div></div>';
+  }
   return h;
 }
 
@@ -1362,10 +1390,17 @@ view.addEventListener("click",function(e){
     catch(x){flash("Texte de sauvegarde invalide.","err")}
     return}
   if(t.id==="btnSync"){syncStage();return}
-  if(t.id==="sbRun"){sb.url=(document.getElementById("sbUrl").value||"").trim().replace(/\/+$/,"");sb.key=(document.getElementById("sbKey").value||"").trim();sbSaveCfg();sbSync(false);return}
-  if(t.id==="sbTest"){sb.url=(document.getElementById("sbUrl").value||"").trim().replace(/\/+$/,"");sb.key=(document.getElementById("sbKey").value||"").trim();sbSaveCfg();sbTest();return}
-  if(t.id==="sbSave"){sb.url=(document.getElementById("sbUrl").value||"").trim().replace(/\/+$/,"");sb.key=(document.getElementById("sbKey").value||"").trim();sbSaveCfg();sb.msg="Configuration enregistrée sur cet appareil.";sb.err=false;render();return}
-  if(t.id==="sbCopy"){var ta=document.getElementById("sbSql");try{navigator.clipboard.writeText(SQL_SETUP).then(function(){flash("Script SQL copié.","ok")},function(){ta.parentNode.open=true;ta.select();flash("Sélectionnez puis copiez le script.","")})}catch(x){ta.parentNode.open=true;ta.select()}return}
+  if(t.id==="sbLogin"){sbLogin(document.getElementById("sbCode").value);return}
+  if(t.id==="sbLogout"){sbLogout();return}
+  if(t.id==="sbRun"){sbSync(false);return}
+  if(t.id==="adAdd"){var nm=(document.getElementById("adNom").value||"").trim();if(!nm){sb.msg="Saisissez le nom de la personne.";sb.err=true;render();return}
+    sbAdminDo("rend_admin_add",{p_nom:nm,p_role:document.getElementById("adRole").value,p_dep:document.getElementById("adDep").value||null},"Accès créé.").then(function(r){if(r)sb.newCode={nom:nm,code:r.code};render()});return}
+  if(t.dataset.sbact){var q=t.dataset.sbact.split(":");
+    if(q[0]==="tog")sbAdminDo("rend_admin_set",{p_id:q[1],p_actif:q[2]==="1"},q[2]==="1"?"Accès activé.":"Accès désactivé.").then(function(){render()});
+    else if(q[0]==="reset"){var u0=(sb.users||[]).filter(function(x){return x.id===q[1]})[0];sbAdminDo("rend_admin_reset",{p_id:q[1]},"Nouveau code généré.").then(function(r){if(r)sb.newCode={nom:u0?u0.nom:"",code:r.code};render()})}
+    return}
+  if(t.dataset.sbhide){sb.newCode=null;render();return}
+  if(t.dataset.sbcopy){var tx=t.dataset.sbcopy==="__sql"?SQL_SETUP:t.dataset.sbcopy;try{navigator.clipboard.writeText(tx).then(function(){flash("Copié.","ok")},function(){flash("Copie impossible : sélectionnez le texte.","err")})}catch(x){flash("Copie impossible : sélectionnez le texte.","err")}return}
   if(t.dataset.seeweek){if(state.last&&state.last.week)state.week=state.last.week;save();setTab("synth");return}
   if(t.dataset.nolast){state.last=null;render();return}
   if(t.id==="btnCancelStage"){state.stage=null;render();return}
@@ -1413,4 +1448,3 @@ sbLoad();setTimeout(function(){if(sb.auto&&sbOk())sbSync(true)},1500);setInterva
 render();
 })();
 </script>
-<!-- build 2026-11-04T16:22:02Z -->
