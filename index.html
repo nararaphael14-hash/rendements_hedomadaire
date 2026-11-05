@@ -549,13 +549,20 @@ function weekChoice(){
   if(k==="new"){var a=state.impWs,b=state.impWe;return (a&&b&&a<=b)?a+"_"+b:""}
   return k;
 }
+function wkStart(k){
+  var m=(k||"").match(/^(\d{4}-\d{2}-\d{2})_/);if(m)return m[1];
+  var w=state.cfg.weeks.filter(function(x){return x[0]===k})[0];return w?w[1]:""
+}
 function stagedRows(){
   var g=state.stage;if(!g)return null;var dep=state.impDep||"",wk=weekChoice();
   var rows=g.rows.map(function(r){var o={};for(var k in r)o[k]=r[k];if(dep)o.d=dep;if(wk)o.w=wk;return o});
+  var fbw=wk,fb=0;
+  if(!fbw){var cw={};rows.forEach(function(r){if(r.w)cw[r.w]=(cw[r.w]||0)+1});fbw=Object.keys(cw).sort(function(a,b){return cw[b]-cw[a]})[0]||""}
+  if(fbw){var st=wkStart(fbw);rows.forEach(function(r){if(!r.w){r.w=fbw;fb++}if(!r.dt&&st)r.dt=st})}
   var idx={};state.rows.forEach(function(r){idx[r.n]=1});
   var nw=0,up=0,nod=0,now=0,teams={},weeks={};
   rows.forEach(function(r){if(!r.d)nod++;if(!r.w)now++;if(r.n in idx)up++;else nw++;var k=(r.d||"?")+"|"+(r.s||"?");teams[k]=(teams[k]||0)+1;var w=r.w||"?";weeks[w]=(weeks[w]||0)+1});
-  return {rows:rows,nw:nw,up:up,nod:nod,now:now,teams:teams,weeks:weeks};
+  return {rows:rows,nw:nw,up:up,nod:nod,now:now,fb:fb,fbw:fbw,teams:teams,weeks:weeks};
 }
 function setProg(p,txt){
   var b=document.getElementById("syncBar"),t=document.getElementById("syncPct"),m=document.getElementById("syncTxt");
@@ -822,6 +829,7 @@ function tImport(){
   if(S){
     h+='<div class="stage"><h3>4 · Aperçu avant synchronisation</h3><div class="ks2"><div class="card"><div class="v">'+S.rows.length+'</div><div class="s">lignes lues</div></div><div class="card"><div class="v">'+S.nw+'</div><div class="s">nouvelles demandes</div></div><div class="card"><div class="v">'+S.up+'</div><div class="s">mises à jour</div></div></div>';
     h+='<div class="sub">Semaine(s) : '+Object.keys(S.weeks).map(function(k){return k==="?"?'<b style="color:var(--bad)">non définie</b> ('+S.weeks[k]+')':esc(wlabel(k))+' ('+S.weeks[k]+' demandes)'}).join(" · ")+'</div>';
+    if(S.fb)h+='<div class="banner">'+S.fb+' ligne(s) sans date : rattachées à la semaine de chargement ('+esc(wlabel(S.fbw))+'), date = début de semaine.</div>';
     if(S.now)h+='<div class="banner err">Semaine manquante pour '+S.now+' ligne(s) : choisissez-la dans « 3 · Semaine ».</div>';
     if(S.nod)h+='<div class="banner err">Département manquant pour '+S.nod+' ligne(s) : choisissez-le dans « 1 · Département ».</div>';
     h+='<div class="scroll"><table style="min-width:0"><thead><tr><th>Département</th><th>Équipe (superviseur)</th><th class="num">Demandes</th></tr></thead><tbody>'+Object.keys(S.teams).sort().map(function(k){var p=k.split("|");return '<tr><td>'+esc(p[0]==="?"?"— à choisir —":dn(p[0]))+'</td><td class="nm">'+esc(p[1])+'</td><td class="num">'+S.teams[k]+'</td></tr>'}).join("")+'</tbody></table></div>'
