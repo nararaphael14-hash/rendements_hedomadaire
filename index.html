@@ -725,7 +725,7 @@ function tHier(r){
       A.forEach(function(a){
         var k2="a:"+D.d+"|"+S.s+"|"+a.a,L=(byAg[D.d+"|"+S.s+"|"+a.a]||[]).slice().sort(function(x,y){return ((x.p==="t"&&x.r==="t")?1:0)-((y.p==="t"&&y.r==="t")?1:0)||(String(x.n)<String(y.n)?-1:1)});
         var chip=function(v){return '<span class="ec ec-'+(v==="t"?"ok":(v==="e"?"delai":"n"))+'">'+STT[v]+'</span>'};
-        var dt='<div class="ag-detail"><table><thead><tr><th>N° demande</th><th>Date</th><th class="num">Superficie (ha)</th><th>PVCL</th><th>RDC</th></tr></thead><tbody>'+L.map(function(x){return '<tr><td class="num">'+esc(x.n)+'</td><td class="num">'+(x.dt?fdmy(x.dt):"")+'</td><td class="num">'+f1(x.ha)+'</td><td>'+chip(x.p)+'</td><td>'+chip(x.r)+'</td></tr>'}).join("")+'</tbody></table></div>';
+        var dt='<div class="ag-detail"><table><thead><tr><th>N° demande</th><th>Date</th><th class="num">Superficie (ha)</th><th>Compte pour</th><th>PVCL</th><th>RDC</th></tr></thead><tbody>'+L.map(function(x){return '<tr><td class="num">'+esc(x.n)+'</td><td class="num">'+(x.dt?fdmy(x.dt):"")+'</td><td class="num">'+f1(x.ha)+'</td><td>'+(!x.sf?"Rendement":((x.r==="t"||x.r==="e")?"RDC enquêtée":"—"))+'</td><td>'+chip(x.p)+'</td><td>'+chip(x.r)+'</td></tr>'}).join("")+'</tbody></table></div>';
         sb+='<details class="n2d" data-k="'+esc(k2)+'"'+(state.open[k2]?" open":"")+'><summary class="hrow n2 '+rowCls(a)+'">'+hcells(a,"ag")+'</summary>'+dt+'</details>';
       });
       inner+='<details class="n1" data-k="'+esc(k1)+'"'+(state.open[k1]?" open":"")+'><summary class="hrow '+S.classe+'">'+hcells(S,"sup")+'</summary>'+sb+'</details>';
@@ -738,7 +738,7 @@ function tHier(r){
   return h+'<div class="scroll"><div class="tree"><div class="hrow hhead">'+HL.map(function(x,i){return '<div class="c'+(i+1)+(i>=2&&i<=4?" r":"")+'">'+esc(x)+'</div>'}).join("")+'</div>'+body+'</div></div>';
 }
 function aggCols(a){
-  return '<td class="num">'+f1(a.ha)+' / '+f0(a.obj)+'</td><td class="num">'+Math.round(a.pct)+' %</td><td class="num">'+a.n+'</td>'
+  return '<td class="num">'+f1(a.ha)+' / '+f0(a.obj)+(a.hr>0?'<div class="sub">+ '+f1(a.hr)+' ha RDC enquêtée</div>':'')+'</td><td class="num">'+Math.round(a.pct)+' %</td><td class="num">'+a.n+'</td>'
    +'<td class="num">'+a.pt+'</td><td class="num">'+a.pe+'</td><td class="num">'+a.pc+'</td><td class="num">'+a.rt+'</td><td class="num">'+a.re+'</td><td class="num">'+a.rc+'</td>'
    +'<td class="num">'+a.a_sup+'/'+a.agents+'</td><td class="num">'+a.a_rdc+'/'+a.agents+'</td><td class="num">'+a.a_pvcl+'/'+a.agents+'</td>';
 }
