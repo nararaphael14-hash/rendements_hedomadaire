@@ -366,7 +366,7 @@ body.ro [data-go="imp"],body.ro #btnExp,body.ro #expBox,body.ro .subbtns{display
 <script>
 (function(){
 var KEY="rendements-nara-v1";
-var DEF={obj:{BUYO:125,SOUBRE:100,MEAGUI:250},objEq:{},seuil:100,
+var DEF={obj:{BUYO:125,SOUBRE:100,MEAGUI:250},objEq:{"MEAGUI|CD N'GUESSAN REGINA":300},seuil:100,
   weeks:[["14-au-18 setp","2026-09-14","2026-09-18"],["19-au-25 setp","2026-09-19","2026-09-25"],["26 sept-au-04 oct","2026-09-26","2026-10-04"],["2026-10-05_2026-10-11","2026-10-05","2026-10-11"],["2026-10-12_2026-10-18","2026-10-12","2026-10-18"]]};
 var state={rows:[],sample:true,cfg:JSON.parse(JSON.stringify(DEF)),week:null,from:"",to:"",q:"",tab:"synth",cmp:null,open:{},flash:null,ind:"haobj",hf:"all",stage:null,impDep:"",hs:"note",ctr:null,cw:"",cdep:"",cq:"",cedit:null,edit:null,tDep:"",tSup:"",tSupNew:"",tg:[{a:"",n:"",ha:"",p:"c",r:"c"}],eDate:todayISO(),eWeek:"",pdep:"",pst:"",impWk:"",impWs:"",impWe:"",last:null,syncing:false};
 var $=function(s){return document.querySelector(s)};
@@ -1485,7 +1485,7 @@ view.addEventListener("click",function(e){
   if(t.dataset.seeweek){if(state.last&&state.last.week)state.week=state.last.week;save();setTab("synth");return}
   if(t.dataset.nolast){state.last=null;render();return}
   if(t.id==="btnCancelStage"){state.stage=null;render();return}
-  if(t.id==="eqReset"){c.objEq={};save();render();return}
+  if(t.id==="eqReset"){c.objEq=JSON.parse(JSON.stringify(DEF.objEq));save();render();return}
   if(t.id==="addWk"){var l=c.weeks[c.weeks.length-1],st=l?addDays(l[2],1):todayISO();c.weeks.push(["nouvelle semaine",st,addDays(st,6)]);save();render();return}
   if(t.dataset.del!==undefined){c.weeks.splice(+t.dataset.del,1);state.week=null;save();render()}
 });
@@ -1522,7 +1522,9 @@ if(!load()||state.sample){state.rows=baseRows();state.sample=false;state.cfg=JSO
     state.cfg.weeks.sort(function(a,b){return a[1]<b[1]?-1:1});state.cfg.bv=BV;state.week=null;save()}
   ensureWeeks()}
 state.rows.forEach(function(r){r.s=canonSup(r.s)});
-{var oe=state.cfg.objEq||{},ne={};Object.keys(oe).forEach(function(k){var q=k.split("|");ne[q[0]+"|"+canonSup(q[1])]=oe[k]});state.cfg.objEq=ne}save();
+{var oe=state.cfg.objEq||{},ne={};Object.keys(oe).forEach(function(k){var q=k.split("|");ne[q[0]+"|"+canonSup(q[1])]=oe[k]});state.cfg.objEq=ne}
+if((state.cfg.ov||0)<1){state.cfg.objEq=state.cfg.objEq||{};state.cfg.objEq["MEAGUI|"+canonSup("N'GUESSAN REGINA")]=300;state.cfg.ov=1}
+save();
 if(!Array.isArray(state.ctr)){state.ctr=ctrBase();save()}
 (function(){var n0=state.ctr.length;state.ctr=state.ctr.filter(function(r){return CTR_DROP.indexOf(r.w)<0});if(state.cw&&CTR_DROP.indexOf(state.cw)>=0)state.cw="";if(state.ctr.length!==n0)save()})();
 {var h0=HASHTAB[location.hash.replace("#","")];if(h0)state.tab=h0}
