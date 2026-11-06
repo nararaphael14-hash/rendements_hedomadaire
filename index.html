@@ -912,6 +912,7 @@ function ctrBase(){return CTR_BASE.map(function(b,i){var c={};CT.forEach(functio
 function ctot(r){return CT.reduce(function(t,x){return t+(+r.c[x[0]]||0)},0)}
 var uidN=0;function uid(){return "c"+Date.now().toString(36)+(uidN++)}
 function genKey(iso){var m=monday(iso);return "DU "+fdm(m)+" au "+fdm(addDays(m,6))}
+var CTR_DROP=["24-au-30 oct"];
 function ctrWeeks(){var m={};state.ctr.forEach(function(r){var o=m[r.w];if(o===undefined||(r.dt&&r.dt<o))m[r.w]=r.dt||"9999"});return Object.keys(m).sort(function(a,b){return m[a]<m[b]?-1:1})}
 function ctrRows(){var q=state.cq.trim().toUpperCase();return state.ctr.filter(function(r){if(state.cw!=="*"&&r.w!==state.cw)return false;if(state.cdep&&r.d!==state.cdep)return false;if(q&&(r.a+" "+r.v+" "+r.sp).toUpperCase().indexOf(q)<0)return false;return true})}
 function importCtr(json){
@@ -926,6 +927,7 @@ function importCtr(json){
     var dt=cDate?parseDate(r0[cDate]):"",c={};
     CT.forEach(function(t){var v=cols[t[0]]?parseFloat(String(r0[cols[t[0]]]).replace(",",".")):0;c[t[0]]=isNaN(v)?0:v});
     var w=cSem&&filled(r0[cSem])?String(r0[cSem]).trim():(dt?genKey(dt):"");
+    if(CTR_DROP.indexOf(w)>=0)w=dt?genKey(dt):"";
     out.push({id:uid(),dt:dt,w:w,d:txt(r0,cDep).normalize("NFD").replace(/[̀-ͯ]/g,""),sp:txt(r0,cSp),v:txt(r0,cV),a:a,c:c});
   });
   if(!out.length){flash("Aucune ligne de contrat trouvée dans le fichier.","err");return}
@@ -1495,6 +1497,7 @@ if(!load()||state.sample){state.rows=baseRows();state.sample=false;state.cfg=JSO
 state.rows.forEach(function(r){r.s=canonSup(r.s)});
 {var oe=state.cfg.objEq||{},ne={};Object.keys(oe).forEach(function(k){var q=k.split("|");ne[q[0]+"|"+canonSup(q[1])]=oe[k]});state.cfg.objEq=ne}save();
 if(!Array.isArray(state.ctr)){state.ctr=ctrBase();save()}
+(function(){var n0=state.ctr.length;state.ctr=state.ctr.filter(function(r){return CTR_DROP.indexOf(r.w)<0});if(state.cw&&CTR_DROP.indexOf(state.cw)>=0)state.cw="";if(state.ctr.length!==n0)save()})();
 {var h0=HASHTAB[location.hash.replace("#","")];if(h0)state.tab=h0}
 sbLoad();setTimeout(function(){if(sb.auto&&sbOk())sbSync(true)},1500);setInterval(function(){if(sb.auto&&sbOk()&&!document.hidden)sbSync(true)},120000);
 render();
