@@ -476,7 +476,8 @@ function evaluer(key){
   var m={};
   d.forEach(function(r){var k=r.d+"|"+r.s+"|"+r.a,g=m[k];
     if(!g)g=m[k]={d:r.d,s:r.s,a:r.a,ha:0,hr:0,n:0,pt:0,pe:0,pc:0,rt:0,re:0,rc:0};
-    if(!r.sf)g.ha+=r.ha;else if(r.r==="t"||r.r==="e")g.hr+=r.ha;
+    if(!r.sf)g.ha+=r.ha;
+    if(r.r==="t"||r.r==="e")g.hr+=r.ha;
     g.n++;g["p"+r.p]++;g["r"+r.r]++;});
   var ag=Object.keys(m).map(function(k){return m[k]});
   ag.forEach(function(g){
@@ -627,7 +628,7 @@ function pillA(a){return a.attente?'<span class="pill p-wait">En attente</span>'
 function rowCls(a){return a.attente?"wait":a.classe}
 function et(e){return '<div class="e e-'+e+'">'+ETX[e]+'</div>'}
 function bar(pct){return '<span class="bar'+(pct>=100?" ok":(pct<40?" lo":""))+'"><i style="width:'+Math.min(pct,100)+'%"></i></span>'}
-function haCell(o){return f1(o.ha)+' / '+f0(o.obj)+' ha<div class="sub">'+Math.round(o.pct)+' %</div>'+bar(o.pct)+(o.hr>0?'<div class="sub">+ '+f1(o.hr)+' ha RDC enquêtée</div>':'')}
+function haCell(o){return f1(o.ha)+' / '+f0(o.obj)+' ha<div class="sub">'+Math.round(o.pct)+' %</div>'+bar(o.pct)+(o.hr>0?'<div class="sub">Superf. enquêtée : '+f1(o.hr)+' ha</div>':'')}
 
 function renderMsg(){
   var h="";
@@ -704,7 +705,7 @@ function hcells(o,t){
   var rest=o.ha>=o.obj?'<div class="sub tx-ok">+'+f1(o.ha-o.obj)+' ha au-dessus</div>':'<div class="sub">reste '+f1(o.obj-o.ha)+' ha</div>';
   var c=function(i,x,cls){return '<div class="c'+i+(cls?" "+cls:"")+'" data-l="'+esc(i===1?"":HL[i-1])+'">'+x+'</div>'};
   return c(1,'<span class="chev">▸</span><span class="nm">'+esc(name)+'</span>'+(subn?'<div class="sub sb">'+esc(subn)+'</div>':''))
-   +c(2,'<b>'+f1(o.ha)+'</b> / '+f0(o.obj)+bar(o.pct)+rest+(o.hr>0?'<div class="sub">+ '+f1(o.hr)+' ha RDC enquêtée</div>':''))
+   +c(2,'<b>'+f1(o.ha)+'</b> / '+f0(o.obj)+bar(o.pct)+rest+(o.hr>0?'<div class="sub">Superf. enquêtée : '+f1(o.hr)+' ha</div>':''))
    +c(3,Math.round(o.pct)+' %','r '+(o.pct>=100?"tx-ok":(o.pct<40?"tx-lo":"")))+c(4,f1(o.note),"r")+c(5,o.n,"r")
    +c(6,stCell(o.pt,o.pe,o.pc,o.n))+c(7,stCell(o.rt,o.re,o.rc,o.n))+c(8,st)+c(9,pr);
 }
@@ -725,7 +726,7 @@ function tHier(r){
       A.forEach(function(a){
         var k2="a:"+D.d+"|"+S.s+"|"+a.a,L=(byAg[D.d+"|"+S.s+"|"+a.a]||[]).slice().sort(function(x,y){return ((x.p==="t"&&x.r==="t")?1:0)-((y.p==="t"&&y.r==="t")?1:0)||(String(x.n)<String(y.n)?-1:1)});
         var chip=function(v){return '<span class="ec ec-'+(v==="t"?"ok":(v==="e"?"delai":"n"))+'">'+STT[v]+'</span>'};
-        var dt='<div class="ag-detail"><table><thead><tr><th>N° demande</th><th>Date</th><th class="num">Superficie (ha)</th><th>Compte pour</th><th>PVCL</th><th>RDC</th></tr></thead><tbody>'+L.map(function(x){return '<tr><td class="num">'+esc(x.n)+'</td><td class="num">'+(x.dt?fdmy(x.dt):"")+'</td><td class="num">'+f1(x.ha)+'</td><td>'+(!x.sf?"Rendement":((x.r==="t"||x.r==="e")?"RDC enquêtée":"—"))+'</td><td>'+chip(x.p)+'</td><td>'+chip(x.r)+'</td></tr>'}).join("")+'</tbody></table></div>';
+        var dt='<div class="ag-detail"><table><thead><tr><th>N° demande</th><th>Date</th><th class="num">Superficie (ha)</th><th>Compte pour</th><th>PVCL</th><th>RDC</th></tr></thead><tbody>'+L.map(function(x){return '<tr><td class="num">'+esc(x.n)+'</td><td class="num">'+(x.dt?fdmy(x.dt):"")+'</td><td class="num">'+f1(x.ha)+'</td><td>'+((!x.sf?"Rendement":"")+(!x.sf&&(x.r==="t"||x.r==="e")?" + ":"")+((x.r==="t"||x.r==="e")?"Enquêtée":"")||"—")+'</td><td>'+chip(x.p)+'</td><td>'+chip(x.r)+'</td></tr>'}).join("")+'</tbody></table></div>';
         sb+='<details class="n2d" data-k="'+esc(k2)+'"'+(state.open[k2]?" open":"")+'><summary class="hrow n2 '+rowCls(a)+'">'+hcells(a,"ag")+'</summary>'+dt+'</details>';
       });
       inner+='<details class="n1" data-k="'+esc(k1)+'"'+(state.open[k1]?" open":"")+'><summary class="hrow '+S.classe+'">'+hcells(S,"sup")+'</summary>'+sb+'</details>';
@@ -738,7 +739,7 @@ function tHier(r){
   return h+'<div class="scroll"><div class="tree"><div class="hrow hhead">'+HL.map(function(x,i){return '<div class="c'+(i+1)+(i>=2&&i<=4?" r":"")+'">'+esc(x)+'</div>'}).join("")+'</div>'+body+'</div></div>';
 }
 function aggCols(a){
-  return '<td class="num">'+f1(a.ha)+' / '+f0(a.obj)+(a.hr>0?'<div class="sub">+ '+f1(a.hr)+' ha RDC enquêtée</div>':'')+'</td><td class="num">'+Math.round(a.pct)+' %</td><td class="num">'+a.n+'</td>'
+  return '<td class="num">'+f1(a.ha)+' / '+f0(a.obj)+(a.hr>0?'<div class="sub">Superf. enquêtée : '+f1(a.hr)+' ha</div>':'')+'</td><td class="num">'+Math.round(a.pct)+' %</td><td class="num">'+a.n+'</td>'
    +'<td class="num">'+a.pt+'</td><td class="num">'+a.pe+'</td><td class="num">'+a.pc+'</td><td class="num">'+a.rt+'</td><td class="num">'+a.re+'</td><td class="num">'+a.rc+'</td>'
    +'<td class="num">'+a.a_sup+'/'+a.agents+'</td><td class="num">'+a.a_rdc+'/'+a.agents+'</td><td class="num">'+a.a_pvcl+'/'+a.agents+'</td>';
 }
@@ -832,7 +833,7 @@ function tImport(){
     h+='<div class="stage"><h3>4 · Aperçu avant synchronisation</h3><div class="ks2"><div class="card"><div class="v">'+S.rows.length+'</div><div class="s">lignes lues</div></div><div class="card"><div class="v">'+S.nw+'</div><div class="s">nouvelles demandes</div></div><div class="card"><div class="v">'+S.up+'</div><div class="s">mises à jour</div></div></div>';
     h+='<div class="sub">Semaine(s) : '+Object.keys(S.weeks).map(function(k){return k==="?"?'<b style="color:var(--bad)">non définie</b> ('+S.weeks[k]+')':esc(wlabel(k))+' ('+S.weeks[k]+' demandes)'}).join(" · ")+'</div>';
     if(S.nsf)h+='<div class="banner">'+S.nsf+' ligne(s) au champ « Semaine » vide : hors superficie de rendement.</div>';
-    if(S.fb)h+='<div class="banner">'+S.fb+' ligne(s) sans semaine : rattachées à la semaine de chargement ('+esc(wlabel(S.fbw))+'). Statuts RDC / PVCL comptés ; superficie : RDC enquêtée seulement (RDC terminé ou en cours).</div>';
+    if(S.fb)h+='<div class="banner">'+S.fb+' ligne(s) sans semaine : rattachées à la semaine de chargement ('+esc(wlabel(S.fbw))+'). Statuts RDC / PVCL comptés ; hors superficie de rendement ; superf. enquêtée si RDC terminé ou en cours.</div>';
     if(S.now)h+='<div class="banner err">Semaine manquante pour '+S.now+' ligne(s) : choisissez-la dans « 3 · Semaine ».</div>';
     if(S.nod)h+='<div class="banner err">Département manquant pour '+S.nod+' ligne(s) : choisissez-le dans « 1 · Département ».</div>';
     h+='<div class="scroll"><table style="min-width:0"><thead><tr><th>Département</th><th>Équipe (superviseur)</th><th class="num">Demandes</th></tr></thead><tbody>'+Object.keys(S.teams).sort().map(function(k){var p=k.split("|");return '<tr><td>'+esc(p[0]==="?"?"— à choisir —":dn(p[0]))+'</td><td class="nm">'+esc(p[1])+'</td><td class="num">'+S.teams[k]+'</td></tr>'}).join("")+'</tbody></table></div>'
