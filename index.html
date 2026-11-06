@@ -527,7 +527,7 @@ function toRows(json){
   json.forEach(function(r0){var o={};for(var k in r0)o[nk(k)]=r0[k];
     if(!filled(o["n°demande"]))return;
     var dt=parseDate(o["date creation demande"]);
-    var w=filled(o["semaine"])?String(o["semaine"]).trim():(dt?semaineDe(dt):"");
+    var w=filled(o["semaine"])?String(o["semaine"]).trim():((!hasSem&&dt)?semaineDe(dt):"");
     var ha=parseFloat(String(o["superficie"]).replace(",","."));
     var st=function(p){return filled(o[p+" termine"])?"t":(filled(o[p+" en cours"])?"e":"c")};
     out.push({n:String(o["n°demande"]).trim(),dt:dt,w:w,sf:hasSem&&!filled(o["semaine"]),
@@ -536,7 +536,34 @@ function toRows(json){
       a:String(o["ce"]||"").trim().replace(/^_+|_+$/g,"").replace(/_/g," ").toUpperCase(),
       ha:isNaN(ha)?0:ha,p:st("pvcl"),r:st("rdc"),o:"Fichier"});
   });
-  return out;
+  out.forEach(function(r){if(/^GRAND[\s-]*ZATTRY$/.test(r.d))r.d="SOUBRE"});
+  /* même N° de demande sur plusieurs lignes (parcelles) : superficies additionnées */
+  var ord={c:0,e:1,t:2},seen={},res=[];
+  out.forEach(function(r){var q=seen[r.n];
+    if(!q){seen[r.n]=r;res.push(r);return}
+    q.ha=Math.round((q.ha+r.ha)*1e6)/1e6;
+    if(ord[r.p]<ord[q.p])q.p=r.p;if(ord[r.r]<ord[q.r])q.r=r.r;
+    if(!r.sf)q.sf=false;if(!q.dt&&r.dt)q.dt=r.dt;if(!q.s&&r.s)q.s=r.s;if(!q.a&&r.a)q.a=r.a});
+  fillSup(res);
+  res.forEach(function(r){if(r.s)r.s=canonSup(r.s)});
+  return res;
+}
+/* superviseur vide : retrouvé par l'agent (fichier puis données existantes, même département) */
+function fillSup(rows){
+  var tk=function(x){return String(x||"").toUpperCase().split(/[\s_]+/).filter(Boolean)};
+  var known={};
+  var add=function(r){if(!r.s||!r.a)return;var k=r.d+"|"+r.a;var o=known[k]||(known[k]={t:tk(r.a),c:{}});o.c[canonSup(r.s)]=(o.c[canonSup(r.s)]||0)+1};
+  state.rows.forEach(add);rows.forEach(add);
+  var cache={};
+  rows.forEach(function(r){if(r.s||!r.a)return;
+    var key=r.d+"|"+r.a;if(cache[key]===undefined){
+      var T=tk(r.a),tot={};
+      Object.keys(known).forEach(function(k){var o=known[k];if(k.split("|")[0]!==r.d)return;
+        var sub=o.t.every(function(x){return T.indexOf(x)>=0})||T.every(function(x){return o.t.indexOf(x)>=0});
+        if(sub)for(var s in o.c)tot[s]=(tot[s]||0)+o.c[s]});
+      var ks=Object.keys(tot).sort(function(x,y){return tot[y]-tot[x]});
+      cache[key]=ks.length&&(ks.length===1||tot[ks[0]]>tot[ks[1]])?ks[0]:"";}
+    if(cache[key])r.s=cache[key]});
 }
 var flashT=null;
 function flash(text,cls){state.flash=text?{t:text,c:cls||""}:null;renderMsg();clearTimeout(flashT);if(text&&cls==="ok")flashT=setTimeout(function(){state.flash=null;renderMsg()},7000)}
@@ -544,7 +571,7 @@ function upsert(list,replace){
   list.forEach(function(r){r.s=canonSup(r.s)});
   if(state.sample||replace){state.rows=[];state.sample=false}
   var idx={};state.rows.forEach(function(r,i){idx[r.n]=i});var add=0,upd=0;
-  list.forEach(function(r){if(r.n in idx){state.rows[idx[r.n]]=r;upd++}else{idx[r.n]=state.rows.length;state.rows.push(r);add++}});
+  list.forEach(function(r){if(r.n in idx){var o=state.rows[idx[r.n]];if(r.sf&&o&&!o.sf&&o.w){r.sf=false;r.w=o.w;r.ha=o.ha;r.a=o.a;r.s=o.s;r.d=o.d;if(o.dt)r.dt=o.dt}state.rows[idx[r.n]]=r;upd++}else{idx[r.n]=state.rows.length;state.rows.push(r);add++}});
   save();return [add,upd];
 }
 function weekChoice(){
@@ -584,7 +611,7 @@ function syncStage(){
   var add=0,upd=0,i=0,N=list.length,CH=Math.max(50,Math.ceil(N/40));
   (function step(){
     var end=Math.min(N,i+CH);
-    for(;i<end;i++){var r=list[i];if(r.n in idx){state.rows[idx[r.n]]=r;upd++}else{idx[r.n]=state.rows.length;state.rows.push(r);add++}}
+    for(;i<end;i++){var r=list[i];if(r.n in idx){var o0=state.rows[idx[r.n]];if(r.sf&&o0&&!o0.sf&&o0.w){r.sf=false;r.w=o0.w;r.ha=o0.ha;r.a=o0.a;r.s=o0.s;r.d=o0.d;if(o0.dt)r.dt=o0.dt}state.rows[idx[r.n]]=r;upd++}else{idx[r.n]=state.rows.length;state.rows.push(r);add++}}
     setProg(N?i/N*90:90,"Synchronisation : "+i+" / "+N+" demandes");
     if(i<N){setTimeout(step,0);return}
     setProg(94,"Enregistrement…");

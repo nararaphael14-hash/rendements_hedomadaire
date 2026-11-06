@@ -2,6 +2,7 @@
 create table if not exists public.rendements_demandes (
   n text primary key, d text not null, s text, a text, w text, dt date,
   ha numeric not null default 0,
+  sf boolean not null default false,
   p text not null default 'c' check (p in ('t','e','c')),
   r text not null default 'c' check (r in ('t','e','c')),
   updated_at timestamptz not null default now()
@@ -52,7 +53,7 @@ language plpgsql security definer set search_path = public as $$
 declare u public.rendements_acces; res jsonb;
 begin u := public.rend_auth(p_code);
   select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb) into res from (
-    select n,d,s,a,w,dt,ha,p,r from public.rendements_demandes order by n offset greatest(p_offset,0) limit least(greatest(p_limit,1),2000)) t;
+    select n,d,s,a,w,dt,ha,p,r,sf from public.rendements_demandes order by n offset greatest(p_offset,0) limit least(greatest(p_limit,1),2000)) t;
   return res; end $$;
 
 create or replace function public.rend_push(p_code text, p_rows jsonb) returns int
@@ -60,11 +61,11 @@ language plpgsql security definer set search_path = public as $$
 declare u public.rendements_acces; k int;
 begin u := public.rend_auth(p_code);
   if u.role = 'lecteur' then raise exception 'LECTURE_SEULE'; end if;
-  insert into public.rendements_demandes(n,d,s,a,w,dt,ha,p,r)
-  select x.n,x.d,x.s,x.a,x.w,x.dt,coalesce(x.ha,0),coalesce(x.p,'c'),coalesce(x.r,'c')
-    from jsonb_to_recordset(p_rows) as x(n text,d text,s text,a text,w text,dt date,ha numeric,p text,r text)
+  insert into public.rendements_demandes(n,d,s,a,w,dt,ha,p,r,sf)
+  select x.n,x.d,x.s,x.a,x.w,x.dt,coalesce(x.ha,0),coalesce(x.p,'c'),coalesce(x.r,'c'),coalesce(x.sf,false)
+    from jsonb_to_recordset(p_rows) as x(n text,d text,s text,a text,w text,dt date,ha numeric,p text,r text,sf boolean)
    where x.n is not null and x.d is not null and (u.role = 'admin' or x.d = u.dep)
-  on conflict (n) do update set d=excluded.d,s=excluded.s,a=excluded.a,w=excluded.w,dt=excluded.dt,ha=excluded.ha,p=excluded.p,r=excluded.r;
+  on conflict (n) do update set d=excluded.d,s=excluded.s,a=excluded.a,w=excluded.w,dt=excluded.dt,ha=excluded.ha,p=excluded.p,r=excluded.r,sf=excluded.sf;
   get diagnostics k = row_count; return k; end $$;
 
 create or replace function public.rend_admin_list(p_code text) returns jsonb
@@ -115,5 +116,5 @@ grant execute on function public.rend_whoami(text), public.rend_pull(text,int,in
 create or replace function public.rend_pull_public(p_offset int default 0, p_limit int default 1000) returns jsonb
 language sql security definer set search_path = public as $$
   select coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb) from (
-    select n,d,s,a,w,dt,ha,p,r from public.rendements_demandes order by n offset greatest(p_offset,0) limit least(greatest(p_limit,1),2000)) t $$;
+    select n,d,s,a,w,dt,ha,p,r,sf from public.rendements_demandes order by n offset greatest(p_offset,0) limit least(greatest(p_limit,1),2000)) t $$;
 grant execute on function public.rend_pull_public(int,int) to anon;
