@@ -469,13 +469,15 @@ function rowsOf(key){
 function classe(sup,dos){return sup&&dos?"vert":(sup?"orange":(dos?"jaune":""))}
 function etat(ok,tard){return ok?"ok":(tard?"manque":"delai")}
 function note(pct,pt,rt,n){return (pct+(n?pt/n*100:0)+(n?rt/n*100:0))/3}
+function wkRange(key){var w=state.cfg.weeks.filter(function(x){return x[0]===key})[0];if(w)return [w[1],w[2]];var m=String(key).match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);return m?[m[1],m[2]]:null}
 function evaluer(key){
-  var tard=todayISO()>finDelai(key),d=rowsOf(key);
+  var tard=todayISO()>finDelai(key),d=rowsOf(key),rg=wkRange(key);
   if(!d.length)return null;
   var m={};
   d.forEach(function(r){var k=r.d+"|"+r.s+"|"+r.a,g=m[k];
-    if(!g)g=m[k]={d:r.d,s:r.s,a:r.a,ha:0,n:0,pt:0,pe:0,pc:0,rt:0,re:0,rc:0};
-    g.ha+=r.ha;g.n++;g["p"+r.p]++;g["r"+r.r]++;});
+    if(!g)g=m[k]={d:r.d,s:r.s,a:r.a,ha:0,hr:0,n:0,pt:0,pe:0,pc:0,rt:0,re:0,rc:0};
+    if(!rg||(r.dt&&r.dt>=rg[0]&&r.dt<=rg[1]))g.ha+=r.ha;else g.hr+=r.ha;
+    g.n++;g["p"+r.p]++;g["r"+r.r]++;});
   var ag=Object.keys(m).map(function(k){return m[k]});
   ag.forEach(function(g){
     g.obj=((state.cfg.objEq||{})[g.d+"|"+g.s]>0?state.cfg.objEq[g.d+"|"+g.s]:state.cfg.obj[g.d])||0;g.pct=g.obj?g.ha/g.obj*100:0;
@@ -493,14 +495,14 @@ function evaluer(key){
     var sum=function(f){return L.reduce(function(t,a){return t+a[f]},0)},cnt=function(f){return L.filter(function(a){return a[f]}).length};
     var ha=sum("ha"),ob=sum("obj"),n=sum("n"),pt=sum("pt"),rt=sum("rt");
     var ps=cnt("sup_ok")/K*100,pr=cnt("rdc_ok")/K*100,pp=cnt("pvcl_ok")/K*100,pct=ob?ha/ob*100:0;
-    return {d:x.d,s:x.s,agents:K,ha:ha,obj:ob,pct:pct,n:n,pt:pt,rt:rt,pe:sum("pe"),pc:sum("pc"),re:sum("re"),rc:sum("rc"),a_sup:cnt("sup_ok"),a_rdc:cnt("rdc_ok"),a_pvcl:cnt("pvcl_ok"),
+    return {d:x.d,s:x.s,agents:K,ha:ha,hr:sum("hr"),obj:ob,pct:pct,n:n,pt:pt,rt:rt,pe:sum("pe"),pc:sum("pc"),re:sum("re"),rc:sum("rc"),a_sup:cnt("sup_ok"),a_rdc:cnt("rdc_ok"),a_pvcl:cnt("pvcl_ok"),
       a_prime:L.filter(function(a){return a.classe==="vert"}).length,
       classe:classe(ps>=seuil,pr>=seuil&&pp>=seuil),note:note(pct,pt,rt,n)};
   }).sort(srt);
   var dm={};ag.forEach(function(a){(dm[a.d]=dm[a.d]||[]).push(a)});
   var dp=Object.keys(dm).map(function(k){var L=dm[k];
     var sum=function(f){return L.reduce(function(t,a){return t+a[f]},0)};
-    var o={d:k,equipes:Object.keys(L.reduce(function(t,a){t[a.s]=1;return t},{})).length,agents:L.length,ha:sum("ha"),obj:sum("obj"),n:sum("n"),pt:sum("pt"),rt:sum("rt"),pe:sum("pe"),pc:sum("pc"),re:sum("re"),rc:sum("rc"),a_sup:L.filter(function(a){return a.sup_ok}).length,a_rdc:L.filter(function(a){return a.rdc_ok}).length,a_pvcl:L.filter(function(a){return a.pvcl_ok}).length,
+    var o={d:k,equipes:Object.keys(L.reduce(function(t,a){t[a.s]=1;return t},{})).length,agents:L.length,ha:sum("ha"),hr:sum("hr"),obj:sum("obj"),n:sum("n"),pt:sum("pt"),rt:sum("rt"),pe:sum("pe"),pc:sum("pc"),re:sum("re"),rc:sum("rc"),a_sup:L.filter(function(a){return a.sup_ok}).length,a_rdc:L.filter(function(a){return a.rdc_ok}).length,a_pvcl:L.filter(function(a){return a.pvcl_ok}).length,
       a_prime:L.filter(function(a){return a.classe==="vert"}).length};
     o.pct=o.obj?o.ha/o.obj*100:0;o.note=note(o.pct,o.pt,o.rt,o.n);return o;
   }).sort(function(a,b){return a.d<b.d?-1:1});
@@ -558,7 +560,7 @@ function stagedRows(){
   var rows=g.rows.map(function(r){var o={};for(var k in r)o[k]=r[k];if(dep)o.d=dep;if(wk)o.w=wk;return o});
   var fbw=wk,fb=0;
   if(!fbw){var cw={};rows.forEach(function(r){if(r.w)cw[r.w]=(cw[r.w]||0)+1});fbw=Object.keys(cw).sort(function(a,b){return cw[b]-cw[a]})[0]||""}
-  if(fbw){var st=wkStart(fbw);rows.forEach(function(r){if(!r.w){r.w=fbw;fb++}if(!r.dt&&st)r.dt=st})}
+  if(fbw){var st=wkStart(fbw);rows.forEach(function(r){if(!r.w){r.w=fbw;fb++}})}
   var idx={};state.rows.forEach(function(r){idx[r.n]=1});
   var nw=0,up=0,nod=0,now=0,teams={},weeks={};
   rows.forEach(function(r){if(!r.d)nod++;if(!r.w)now++;if(r.n in idx)up++;else nw++;var k=(r.d||"?")+"|"+(r.s||"?");teams[k]=(teams[k]||0)+1;var w=r.w||"?";weeks[w]=(weeks[w]||0)+1});
@@ -625,7 +627,7 @@ function pillA(a){return a.attente?'<span class="pill p-wait">En attente</span>'
 function rowCls(a){return a.attente?"wait":a.classe}
 function et(e){return '<div class="e e-'+e+'">'+ETX[e]+'</div>'}
 function bar(pct){return '<span class="bar'+(pct>=100?" ok":(pct<40?" lo":""))+'"><i style="width:'+Math.min(pct,100)+'%"></i></span>'}
-function haCell(o){return f1(o.ha)+' / '+f0(o.obj)+' ha<div class="sub">'+Math.round(o.pct)+' %</div>'+bar(o.pct)}
+function haCell(o){return f1(o.ha)+' / '+f0(o.obj)+' ha<div class="sub">'+Math.round(o.pct)+' %</div>'+bar(o.pct)+(o.hr>0?'<div class="sub">+ '+f1(o.hr)+' ha RDC enquêtée</div>':'')}
 
 function renderMsg(){
   var h="";
@@ -702,7 +704,7 @@ function hcells(o,t){
   var rest=o.ha>=o.obj?'<div class="sub tx-ok">+'+f1(o.ha-o.obj)+' ha au-dessus</div>':'<div class="sub">reste '+f1(o.obj-o.ha)+' ha</div>';
   var c=function(i,x,cls){return '<div class="c'+i+(cls?" "+cls:"")+'" data-l="'+esc(i===1?"":HL[i-1])+'">'+x+'</div>'};
   return c(1,'<span class="chev">▸</span><span class="nm">'+esc(name)+'</span>'+(subn?'<div class="sub sb">'+esc(subn)+'</div>':''))
-   +c(2,'<b>'+f1(o.ha)+'</b> / '+f0(o.obj)+bar(o.pct)+rest)
+   +c(2,'<b>'+f1(o.ha)+'</b> / '+f0(o.obj)+bar(o.pct)+rest+(o.hr>0?'<div class="sub">+ '+f1(o.hr)+' ha RDC enquêtée</div>':''))
    +c(3,Math.round(o.pct)+' %','r '+(o.pct>=100?"tx-ok":(o.pct<40?"tx-lo":"")))+c(4,f1(o.note),"r")+c(5,o.n,"r")
    +c(6,stCell(o.pt,o.pe,o.pc,o.n))+c(7,stCell(o.rt,o.re,o.rc,o.n))+c(8,st)+c(9,pr);
 }
@@ -829,7 +831,7 @@ function tImport(){
   if(S){
     h+='<div class="stage"><h3>4 · Aperçu avant synchronisation</h3><div class="ks2"><div class="card"><div class="v">'+S.rows.length+'</div><div class="s">lignes lues</div></div><div class="card"><div class="v">'+S.nw+'</div><div class="s">nouvelles demandes</div></div><div class="card"><div class="v">'+S.up+'</div><div class="s">mises à jour</div></div></div>';
     h+='<div class="sub">Semaine(s) : '+Object.keys(S.weeks).map(function(k){return k==="?"?'<b style="color:var(--bad)">non définie</b> ('+S.weeks[k]+')':esc(wlabel(k))+' ('+S.weeks[k]+' demandes)'}).join(" · ")+'</div>';
-    if(S.fb)h+='<div class="banner">'+S.fb+' ligne(s) sans date : rattachées à la semaine de chargement ('+esc(wlabel(S.fbw))+'), date = début de semaine.</div>';
+    if(S.fb)h+='<div class="banner">'+S.fb+' ligne(s) sans semaine : rattachées à la semaine de chargement ('+esc(wlabel(S.fbw))+'). Comptées en RDC / PVCL, pas dans la superficie de rendement.</div>';
     if(S.now)h+='<div class="banner err">Semaine manquante pour '+S.now+' ligne(s) : choisissez-la dans « 3 · Semaine ».</div>';
     if(S.nod)h+='<div class="banner err">Département manquant pour '+S.nod+' ligne(s) : choisissez-le dans « 1 · Département ».</div>';
     h+='<div class="scroll"><table style="min-width:0"><thead><tr><th>Département</th><th>Équipe (superviseur)</th><th class="num">Demandes</th></tr></thead><tbody>'+Object.keys(S.teams).sort().map(function(k){var p=k.split("|");return '<tr><td>'+esc(p[0]==="?"?"— à choisir —":dn(p[0]))+'</td><td class="nm">'+esc(p[1])+'</td><td class="num">'+S.teams[k]+'</td></tr>'}).join("")+'</tbody></table></div>'
