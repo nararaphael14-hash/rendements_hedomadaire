@@ -1300,13 +1300,13 @@ async function sbSync(silent){
     var sg=sbSigs(),got=[],off=0,PG=1000;
     for(;;){var j=sb.code?await rpc("rend_pull",{p_code:sb.code,p_offset:off,p_limit:PG}):await rpc("rend_pull_public",{p_offset:off,p_limit:PG});got=got.concat(j);sbProg(Math.min(35,5+got.length/60),"Lecture : "+got.length+" demandes");if(j.length<PG)break;off+=PG}
     var idx={};state.rows.forEach(function(r,i){idx[r.n]=i});
-    var add=0,upd=0;
+    var add=0,upd=0,ro0=!sb.code||(sb.who&&sb.who.role==="lecteur"),first=Object.keys(sg).length===0;
     got.forEach(function(x){
       var row={n:x.n,d:x.d,s:canonSup(x.s),a:x.a||"",w:x.w||"",dt:x.dt||"",ha:+x.ha||0,p:x.p,r:x.r,sf:!!x.sf,o:"Serveur"},k=idx[x.n];
       if(k===undefined){idx[x.n]=state.rows.length;state.rows.push(row);sg[x.n]=sigOf(row);add++;return}
       var L=state.rows[k],sl=sigOf(L),ss=sigOf(row);
       if(sl===ss){sg[x.n]=sl;return}
-      if(sg[x.n]===sl){state.rows[k]=row;sg[x.n]=ss;upd++}
+      if(ro0||first||sg[x.n]===sl){state.rows[k]=row;sg[x.n]=ss;upd++}
     });
     var sent=0,ro=!sb.code||(sb.who&&sb.who.role==="lecteur");
     var dirty=ro?[]:state.rows.filter(function(r){return sg[r.n]!==sigOf(r)});
