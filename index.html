@@ -476,7 +476,7 @@ function evaluer(key){
   var m={};
   d.forEach(function(r){var k=r.d+"|"+r.s+"|"+r.a,g=m[k];
     if(!g)g=m[k]={d:r.d,s:r.s,a:r.a,ha:0,hr:0,n:0,pt:0,pe:0,pc:0,rt:0,re:0,rc:0};
-    if(!rg||(r.dt&&r.dt>=rg[0]&&r.dt<=rg[1]))g.ha+=r.ha;else g.hr+=r.ha;
+    if(!rg||(r.dt&&r.dt>=rg[0]&&r.dt<=rg[1]))g.ha+=r.ha;else if(r.p==="t"&&r.r==="t")g.hr+=r.ha;
     g.n++;g["p"+r.p]++;g["r"+r.r]++;});
   var ag=Object.keys(m).map(function(k){return m[k]});
   ag.forEach(function(g){
