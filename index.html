@@ -314,6 +314,7 @@ body.ro [data-go="imp"],body.ro #btnExp,body.ro #expBox,body.ro .subbtns{display
     <button class="tab" role="tab" data-t="cmp">Comparaison</button>
     <button class="tab" role="tab" data-t="prime">Primes</button>
     <div class="tgrp">Données</div>
+    <button class="tab" role="tab" data-t="rech">Recherche</button>
     <button class="tab" role="tab" data-t="saisie">Saisie &amp; détail</button>
     <button class="tab" role="tab" data-t="ctr">Contrats</button>
     <button class="tab" role="tab" data-t="imp">Importer les données</button>
@@ -890,6 +891,19 @@ function teamsOf(dep){var m={};state.rows.forEach(function(r){if(r.d===dep)m[r.s
 function agentsOf(dep,sup){var m={};state.rows.forEach(function(r){if(r.d===dep&&r.s===sup)m[r.a]=1});return Object.keys(m).sort()}
 var STT={t:"Terminé",e:"En cours",c:"À créer"};
 function opts(sel){return ["c","e","t"].map(function(v){return '<option value="'+v+'"'+(sel===v?" selected":"")+'>'+STT[v]+'</option>'}).join("")}
+function tRech(){
+  var q=(state.rq||"").trim().toUpperCase(),tk=q.split(/\s+/).filter(Boolean),L=[];
+  if(tk.length)L=state.rows.filter(function(r){var h=(r.n+" "+r.a+" "+r.s+" "+dn(r.d)+" "+wlabel(r.w)).toUpperCase();return tk.every(function(t){return h.indexOf(t)>=0})});
+  L.sort(function(a,b){return (b.dt||"")<(a.dt||"")?-1:1});
+  var tot=0,rd=0;L.forEach(function(r){tot+=r.ha;if(!r.sf)rd+=r.ha});
+  var h='<div class="panel"><h2>Recherche d’une demande ou d’un agent</h2><div class="f"><label for="rq">N° de demande, agent (CE), superviseur, département ou semaine</label><input type="search" id="rq" value="'+esc(state.rq||"")+'" placeholder="ex. 385-016-005157 ou KOUASSI" autocomplete="off"></div></div>';
+  if(!tk.length)return h+'<div class="empty">Saisissez un N° de demande ou un nom d’agent. La recherche porte sur toutes les semaines.</div>';
+  h+='<div class="panel"><h2>'+L.length+' demande(s) <span class="sub">— '+f1(tot)+' ha au total, dont '+f1(rd)+' ha comptés au rendement</span></h2>';
+  if(!L.length)return h+'<div class="empty">Aucun résultat.</div></div>';
+  h+='<div class="scroll"><table><thead><tr><th>Semaine</th><th>Date</th><th>N° demande</th><th>Agent</th><th>Superviseur</th><th>Dépt</th><th class="num">HA</th><th>PVCL</th><th>RDC</th><th>Compte pour</th></tr></thead><tbody>';
+  L.slice(0,300).forEach(function(r){h+='<tr><td>'+esc(wlabel(r.w))+'</td><td class="num">'+(r.dt?fdmy(r.dt):"")+'</td><td class="num">'+esc(r.n)+'</td><td class="nm">'+esc(r.a)+'</td><td>'+esc(r.s)+'</td><td>'+esc(dn(r.d))+'</td><td class="num">'+f1(r.ha)+'</td><td>'+STT[r.p]+'</td><td>'+STT[r.r]+'</td><td>'+(r.sf?"Superf. enquêtée":"Rendement")+'</td></tr>'});
+  h+='</tbody></table></div>'+(L.length>300?'<div class="sub">300 premières lignes affichées sur '+L.length+'. Précisez la recherche.</div>':'')+'</div>';
+  return h}
 function tSaisie(){
   var w=entryWeek(),deps=Object.keys(state.cfg.obj),h='';
   h+='<div class="subbtns"><button class="btn" type="button">Saisie par équipe</button><button class="btn ghost" type="button" data-go="imp">Import fichier Excel</button></div>';
@@ -1237,10 +1251,11 @@ function render(){
   (function(){var c=$("#whoChip"),w=sb.who;if(c)c.innerHTML=w?"<b>"+esc(w.nom)+"</b>"+esc(w.role)+(w.dep?" · "+esc(dn(w.dep)):""):"<b>"+(sb.code?"Code enregistré":"Lecteur (lien)")+"</b>consultation"})();
   if(ro0&&ROTABS[state.tab]){state.tab="synth";try{location.hash="synthese"}catch(e){}}
   var r=state.week?evaluer(state.week):null;
-  var hideC=state.tab==="ctr"||state.tab==="prime"||state.tab==="partage";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
+  var hideC=state.tab==="rech"||state.tab==="ctr"||state.tab==="prime"||state.tab==="partage";$("#toolsBar").hidden=hideC;$("#legend").hidden=hideC;$("#wkh").hidden=hideC;
   $("#wkh").innerHTML=state.week?'<b>Semaine '+esc(wlabel(state.week))+'</b>'+(r?r.nd+' demandes · RDC et PVCL à solder avant le '+fdmy(r.fin):'aucune demande pour ce filtre')+([state.from,state.to,state.q.trim()].some(Boolean)?' · filtré':''):'';
   var v=$("#view"),t=state.tab;
   if(t==="cmp")v.innerHTML=tCmp();
+  else if(t==="rech")v.innerHTML=tRech();
   else if(t==="saisie")v.innerHTML=tSaisie();
   else if(t==="prime")v.innerHTML=tPrime();
   else if(t==="partage")v.innerHTML=tPartage();
@@ -1365,7 +1380,7 @@ function tPartage(){
 }
 
 /* ---------- navigation ---------- */
-var TABS=[["synth","synthese"],["hier","hierarchie"],["dep","equipes"],["cmp","comparaison"],["saisie","saisie"],["prime","primes"],["partage","partage"],["ctr","contrats"],["param","parametres"],["imp","importer"]];
+var TABS=[["rech","recherche"],["synth","synthese"],["hier","hierarchie"],["dep","equipes"],["cmp","comparaison"],["saisie","saisie"],["prime","primes"],["partage","partage"],["ctr","contrats"],["param","parametres"],["imp","importer"]];
 var HASHTAB={},TABHASH={};TABS.forEach(function(x){TABHASH[x[0]]=x[1];HASHTAB[x[1]]=x[0]});
 function setTab(t,noHash){
   state.tab=t;if(!noHash){try{location.hash=TABHASH[t]}catch(e){}}
@@ -1395,6 +1410,7 @@ $("#btnFilt").addEventListener("click",function(){$("#more").classList.toggle("o
 window.addEventListener("hashchange",function(){var t=HASHTAB[location.hash.replace("#","")];if(t&&t!==state.tab)setTab(t,true)});
 $("#dFrom").addEventListener("change",function(e){state.from=e.target.value;render()});
 $("#dTo").addEventListener("change",function(e){state.to=e.target.value;render()});
+document.addEventListener("input",function(e){if(e.target&&e.target.id==="rq"){state.rq=e.target.value;var p=e.target.selectionStart;render();var q=$("#rq");if(q){q.focus();try{q.setSelectionRange(p,p)}catch(x){}}}});
 $("#q").addEventListener("input",function(e){state.q=e.target.value;var p=e.target.selectionStart;render();var q=$("#q");q.focus();try{q.setSelectionRange(p,p)}catch(x){}});
 $("#btnExp").addEventListener("click",expToggle);
 $("#expBox").addEventListener("click",function(e){var k=e.target.dataset&&e.target.dataset.exp;if(k)expRun(k)});
