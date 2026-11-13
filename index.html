@@ -914,6 +914,7 @@ function tSaisie(){
      +'<div class="f"><label for="edDep">Département</label><select id="edDep">'+deps.map(function(d){return '<option value="'+d+'"'+(er.d===d?" selected":"")+'>'+esc(dn(d))+'</option>'}).join("")+'</select></div>'
      +'<div class="f"><label for="edS">Superviseur</label><input type="text" id="edS" value="'+esc(er.s)+'"></div>'
      +'<div class="f"><label for="edA">Agent</label><input type="text" id="edA" value="'+esc(er.a)+'"></div>'
+     +'<div class="f"><label for="edW">Semaine</label><select id="edW">'+state.cfg.weeks.map(function(x){return '<option value="'+esc(x[0])+'"'+(er.w===x[0]?" selected":"")+'>'+esc(wlabel(x[0]))+'</option>'}).join("")+(state.cfg.weeks.some(function(x){return x[0]===er.w})?"":'<option value="'+esc(er.w)+'" selected>'+esc(wlabel(er.w))+'</option>')+'</select></div>'
      +'<div class="f"><label for="edH">Superficie (ha)</label><input type="number" id="edH" min="0" step="0.001" value="'+er.ha+'"></div>'
      +'<div class="f"><label for="edP">PVCL</label><select id="edP">'+opts(er.p)+'</select></div>'
      +'<div class="f"><label for="edR">RDC</label><select id="edR">'+opts(er.r)+'</select></div></div>'
@@ -936,9 +937,11 @@ function tSaisie(){
     h+='</tbody></table></div><div class="row-actions"><button class="btn ghost" type="button" id="tgAdd">Ajouter une ligne</button><button class="btn ghost" type="button" id="tgFill">Remplir avec les agents de l’équipe</button><button class="btn" type="button" id="tgSave">Enregistrer les lignes</button></div>';
   }else h+='<div class="sub">Choisissez un département puis une équipe pour saisir les lignes.</div>';
   h+='</div>';
-  var L=state.week?rowsOf(state.week):[];
-  h+='<div class="panel"><h2>'+L.length+' demande(s) <span class="sub">— filtre semaine / dates / recherche appliqué</span></h2>';
-  if(!L.length)h+='<div class="empty">Aucune demande pour ce filtre.</div>';
+  var sq=(state.sq||"").trim().toUpperCase(),stk=sq.split(/\s+/).filter(Boolean);
+  var L=stk.length?state.rows.filter(function(r){var hh=(r.n+" "+r.a+" "+r.s+" "+dn(r.d)+" "+wlabel(r.w)).toUpperCase();return stk.every(function(t){return hh.indexOf(t)>=0})}).sort(function(a,b){return (b.dt||"")<(a.dt||"")?-1:1}):(state.week?rowsOf(state.week):[]);
+  h+='<div class="panel"><h2>Rechercher une demande à modifier</h2><div class="f"><label for="sq">N° de demande ou agent (CE), toutes semaines</label><input type="search" id="sq" value="'+esc(state.sq||"")+'" placeholder="ex. 385-016-005157 ou KOUASSI" autocomplete="off"></div></div>';
+  h+='<div class="panel"><h2>'+L.length+' demande(s) <span class="sub">— '+(stk.length?'résultat de la recherche (toutes semaines)':'filtre semaine / dates / recherche appliqué')+'</span></h2>';
+  if(!L.length)h+='<div class="empty">'+(stk.length?'Aucun résultat.':'Aucune demande pour ce filtre.')+'</div>';
   else{
     h+='<div class="scroll"><table><thead><tr><th>Date</th><th>N° demande</th><th>Agent</th><th>Superviseur</th><th>Dépt</th><th class="num">HA</th><th>PVCL</th><th>RDC</th><th>Origine</th><th></th></tr></thead><tbody>';
     L.slice(0,300).forEach(function(r){h+='<tr><td class="num">'+(r.dt?fdmy(r.dt):"")+'</td><td class="num">'+esc(r.n)+'</td><td class="nm">'+esc(r.a)+'</td><td>'+esc(r.s)+'</td><td>'+esc(dn(r.d))+'</td><td class="num">'+f1(r.ha)+'</td><td>'+STT[r.p]+'</td><td>'+STT[r.r]+'</td><td>'+esc(r.o||"Fichier")+'</td><td><button class="btn ghost sm" type="button" data-edit="'+esc(r.n)+'">Modifier</button></td></tr>'});
@@ -1410,7 +1413,8 @@ $("#btnFilt").addEventListener("click",function(){$("#more").classList.toggle("o
 window.addEventListener("hashchange",function(){var t=HASHTAB[location.hash.replace("#","")];if(t&&t!==state.tab)setTab(t,true)});
 $("#dFrom").addEventListener("change",function(e){state.from=e.target.value;render()});
 $("#dTo").addEventListener("change",function(e){state.to=e.target.value;render()});
-document.addEventListener("input",function(e){if(e.target&&e.target.id==="rq"){state.rq=e.target.value;var p=e.target.selectionStart;render();var q=$("#rq");if(q){q.focus();try{q.setSelectionRange(p,p)}catch(x){}}}});
+document.addEventListener("input",function(e){if(e.target&&e.target.id==="sq"){state.sq=e.target.value;var p0=e.target.selectionStart;render();var q0=$("#sq");if(q0){q0.focus();try{q0.setSelectionRange(p0,p0)}catch(x){}}return}
+if(e.target&&e.target.id==="rq"){state.rq=e.target.value;var p=e.target.selectionStart;render();var q=$("#rq");if(q){q.focus();try{q.setSelectionRange(p,p)}catch(x){}}}});
 $("#q").addEventListener("input",function(e){state.q=e.target.value;var p=e.target.selectionStart;render();var q=$("#q");q.focus();try{q.setSelectionRange(p,p)}catch(x){}});
 $("#btnExp").addEventListener("click",expToggle);
 $("#expBox").addEventListener("click",function(e){var k=e.target.dataset&&e.target.dataset.exp;if(k)expRun(k)});
@@ -1462,7 +1466,7 @@ view.addEventListener("click",function(e){
     var row=state.rows.filter(function(r){return r.n===state.edit})[0];
     if(row){var h3=parseFloat(String($("#edH").value).replace(",","."));
       row.dt=$("#edD").value;row.a=$("#edA").value.trim().toUpperCase();row.s=$("#edS").value.trim().toUpperCase();row.d=$("#edDep").value;
-      row.ha=isNaN(h3)?0:h3;row.p=$("#edP").value;row.r=$("#edR").value;var w3=row.dt&&semaineDe(row.dt);if(w3)row.w=w3;save()}
+      row.ha=isNaN(h3)?0:h3;row.p=$("#edP").value;row.r=$("#edR").value;var w3=$("#edW")?$("#edW").value:"";if(w3&&w3!==row.w){row.w=w3;row.sf=false}save()}
     state.edit=null;flash("Demande modifiée.","ok");render();return}
   if(t.id==="cAdd"||t.id==="cSave"){
     var f=readCtrForm();
