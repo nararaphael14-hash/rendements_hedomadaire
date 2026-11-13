@@ -1522,6 +1522,7 @@ if(!load()||state.sample){state.rows=baseRows();state.sample=false;state.cfg=JSO
     state.cfg.weeks.sort(function(a,b){return a[1]<b[1]?-1:1});state.cfg.bv=BV;state.week=null;save()}
   ensureWeeks()}
 state.rows.forEach(function(r){r.s=canonSup(r.s)});
+(function(){var n0=state.rows.length;var ch=0;state.rows=state.rows.filter(function(r){if(String(r.w||"").indexOf("→")<0)return true;var k=r.dt?semaineDe(r.dt):"";if(k){r.w=k;ch=1;return true}return false});state.cfg.weeks=state.cfg.weeks.filter(function(w){return String(w[0]).indexOf("→")<0});if(state.rows.length!==n0||ch)save()})();
 {var oe=state.cfg.objEq||{},ne={};Object.keys(oe).forEach(function(k){var q=k.split("|");ne[q[0]+"|"+canonSup(q[1])]=oe[k]});state.cfg.objEq=ne}
 if((state.cfg.ov||0)<1){state.cfg.objEq=state.cfg.objEq||{};state.cfg.objEq["MEAGUI|"+canonSup("N'GUESSAN REGINA")]=300;state.cfg.ov=1}
 save();
